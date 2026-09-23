@@ -23,6 +23,11 @@ struct PriceLevel {
     total_qty += o.qty;
     ++count;
   }
+  // if FIFO is replaced by LIFO, 56406 fails because breaking time priority 
+  // produces different fill sequences than the naive oracle on almost every random operation. 
+  // This is what the differential harness is for: it doesn't need to know in advance what 
+  // "FIFO" means, it just needs the reference implementation to disagree loudly.
+
 
   // O(1) removal from anywhere in the queue (this is what makes cancel cheap).
   void unlink(OrderPool& pool, Handle h) noexcept {
