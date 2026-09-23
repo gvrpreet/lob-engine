@@ -1,0 +1,5 @@
+build/
+data/*.bin
+data/perf.data*
+compile_commands.json
+.cache/

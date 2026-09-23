@@ -1,0 +1,12 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: { preset: [debug, asan, release], cxx: [g++, clang++] }
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake --preset ${{ matrix.preset }} -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+      - run: cmake --build build/${{ matrix.preset }} -j
+      - run: ctest --test-dir build/${{ matrix.preset }} --output-on-failure

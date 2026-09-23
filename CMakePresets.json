@@ -1,0 +1,13 @@
+{
+  "version": 3,
+  "configurePresets": [
+    { "name": "release", "binaryDir": "${sourceDir}/build/release",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo", "LOB_NATIVE": "ON" } },
+    { "name": "debug",   "binaryDir": "${sourceDir}/build/debug",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" } },
+    { "name": "asan",    "binaryDir": "${sourceDir}/build/asan",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "LOB_ASAN": "ON" } },
+    { "name": "tsan",    "binaryDir": "${sourceDir}/build/tsan",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "LOB_TSAN": "ON" } }
+  ]
+}
