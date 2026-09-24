@@ -14,3 +14,20 @@ int main(int argc, char** argv) {
   std::printf("wrote %zu events (%.1f MB) to %s\n", ev.size(),
               static_cast<double>(ev.size() * sizeof(replay::Event)) / 1e6, argv[1]);
 }
+
+
+
+// Verified working on Ubuntu 24.04, checked replay framework got book checksum
+// Testing results 
+
+// wrote 1000000 events (32.0 MB) to data/events_1M.bin
+// events        : 1000000
+// trades        : 528626 (volume 13489553)
+// rejected      : 0   cancel misses: 120860   resting at end: 185922
+// throughput    : 10.04 M events/s (0.100 s)
+// vwap / last   : 9984.045 / 9996
+// book checksum : ba7911b3a1dd1d8a
+// latency p50    : 46 ns
+// latency p90    : 149 ns
+// latency p99    : 483 ns
+// latency p99.9  : 1354 ns
