@@ -14,13 +14,13 @@ struct PriceLevel {
 
   bool empty() const noexcept { return head == kInvalid; }
 
-  void push_back(OrderPool& pool, Handle h) noexcept {
-    Order& o = pool[h];
-    o.prev = tail;
-    o.next = kInvalid;
-    if (tail != kInvalid) pool[tail].next = h; else head = h;
+  template <class Pool>
+  void push_back(Pool& pool, Handle h) noexcept {
+    pool.set_prev(h, tail);
+    pool.set_next(h, kInvalid);
+    if (tail != kInvalid) pool.set_next(tail, h); else head = h;
     tail = h;
-    total_qty += o.qty;
+    total_qty += pool.qty(h);
     ++count;
   }
   // if FIFO is replaced by LIFO, 56406 fails because breaking time priority 
@@ -30,11 +30,13 @@ struct PriceLevel {
 
 
   // O(1) removal from anywhere in the queue (this is what makes cancel cheap).
-  void unlink(OrderPool& pool, Handle h) noexcept {
-    Order& o = pool[h];
-    if (o.prev != kInvalid) pool[o.prev].next = o.next; else head = o.next;
-    if (o.next != kInvalid) pool[o.next].prev = o.prev; else tail = o.prev;
-    total_qty -= o.qty;
+  template <class Pool>
+  void unlink(Pool& pool, Handle h) noexcept {
+    const Handle previous = pool.prev(h);
+    const Handle next_order = pool.next(h);
+    if (previous != kInvalid) pool.set_next(previous, next_order); else head = next_order;
+    if (next_order != kInvalid) pool.set_prev(next_order, previous); else tail = previous;
+    total_qty -= pool.qty(h);
     --count;
   }
 };

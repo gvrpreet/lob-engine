@@ -115,7 +115,7 @@ don't publish absolute latency numbers as if they were bare-metal figures.
 
 ## 7. Daily workflow — where to actually start
 
-1. Open `docs/00-roadmap.md`. You are at **Phase 0/1**.
+1. Open `docs/00-roadmap.md`. Current implementation progress is **Phase 2(c)**; check its status and remaining criteria before choosing the next build task.
 2. Open `docs/02-workflow.md` and follow the 8-step loop for every change you make.
 3. Copy `docs/learning/notes/TEMPLATE.md` to `docs/learning/notes/$(date +%F)-phaseN.md` each
    session and fill it in — this is what turns "I fiddled with code" into a portfolio.

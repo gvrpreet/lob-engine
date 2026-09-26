@@ -44,5 +44,4 @@ scripts/check.sh                               # ASan/UBSan + release tests (run
 Requires: CMake ≥ 3.20, GCC ≥ 11 or Clang ≥ 14. Optional: `perf`, `valgrind`, `clang-tidy`.
 
 ## Status
-Phase 1 baseline is implemented and passing (unit + differential + replay determinism tests).
-Phases 2–7 are where you do the learning — see `docs/00-roadmap.md`.
+Phase 1 unit, differential, and replay checks pass, with added crossing, one-sided-market, partial-fill-cancel, maximum-quantity, and filled-id-reuse cases. A participant self-cross case is not representable without trader identity, and the invariant walkthrough remains unverified. Phase 2(a-c), allocator, record-size, and hot/cold experiments, are implemented and measured; hot/cold did not establish an improvement. Phase 2 remains in progress. See `docs/00-roadmap.md` and `docs/03-benchmark-log.md` for evidence and remaining work.

@@ -1,4 +1,5 @@
 #include <vector>
+#include <limits>
 
 #include "lob/order_book.hpp"
 #include "testing.hpp"
@@ -101,4 +102,49 @@ TEST(pool_slots_are_reused) {
   CHECK(b.add(5, Side::Buy, OrderType::Limit, 1, 1, 5, NullSink{}) == AddResult::Rejected);  // full
   b.cancel(2);
   CHECK(b.add(5, Side::Buy, OrderType::Limit, 1, 1, 5, NullSink{}) == AddResult::Rested);
+}
+
+TEST(crossing_limit_orders_trade_at_resting_price) {
+  OrderBook b(64); Collector c;
+  b.add(1, Side::Buy, OrderType::Limit, 105, 4, 1, c);
+  CHECK(b.add(2, Side::Sell, OrderType::Limit, 100, 4, 2, c) == AddResult::Filled);
+  CHECK(c.v.size() == 1);
+  CHECK((c.v[0] == Trade{2, 1, 105, 4, 2}));
+  CHECK(b.order_count() == 0);
+}
+
+TEST(market_order_on_one_sided_book_discards_remainder) {
+  OrderBook b(64); Collector c;
+  b.add(1, Side::Sell, OrderType::Limit, 100, 3, 1, c);
+  CHECK(b.add(2, Side::Buy, OrderType::Market, 0, 8, 2, c) == AddResult::Discarded);
+  CHECK(c.v.size() == 1 && c.v[0].maker == 1 && c.v[0].qty == 3);
+  CHECK(b.order_count() == 0);
+}
+
+TEST(cancel_maker_after_partial_fill) {
+  OrderBook b(64); Collector c;
+  b.add(1, Side::Sell, OrderType::Limit, 100, 10, 1, c);
+  CHECK(b.add(2, Side::Buy, OrderType::Limit, 100, 4, 2, c) == AddResult::Filled);
+  CHECK(b.order_count() == 1 && b.volume_at(Side::Sell, 100) == 6);
+  CHECK(b.cancel(1));
+  CHECK(b.order_count() == 0 && b.level_count(Side::Sell) == 0);
+}
+
+TEST(large_quantity_partially_fills_without_overflow) {
+  OrderBook b(64); Collector c;
+  b.add(1, Side::Sell, OrderType::Limit, 100, 7, 1, c);
+  const Qty large_qty = std::numeric_limits<Qty>::max();
+  CHECK(b.add(2, Side::Buy, OrderType::Limit, 100, large_qty, 2, c) ==
+        AddResult::PartiallyRested);
+  CHECK(c.v.size() == 1 && c.v[0].qty == 7);
+  CHECK(b.volume_at(Side::Buy, 100) == large_qty - 7);
+  CHECK(b.order_count() == 1);
+}
+
+TEST(filled_order_id_can_be_reused) {
+  OrderBook b(64);
+  b.add(1, Side::Sell, OrderType::Limit, 100, 2, 1, NullSink{});
+  CHECK(b.add(2, Side::Buy, OrderType::Market, 0, 2, 2, NullSink{}) == AddResult::Filled);
+  CHECK(b.add(1, Side::Buy, OrderType::Limit, 99, 3, 3, NullSink{}) == AddResult::Rested);
+  CHECK(b.contains(1) && b.order_count() == 1);
 }

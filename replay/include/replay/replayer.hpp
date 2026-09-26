@@ -34,5 +34,9 @@ struct ReplayStats {
 
 ReplayStats replay(std::span<const Event> events, const ReplayConfig& cfg = {},
                    IStrategy* strategy = nullptr);
+ReplayStats replay_naive(std::span<const Event> events, const ReplayConfig& cfg = {});
+ReplayStats replay_order48(std::span<const Event> events, const ReplayConfig& cfg = {});
+ReplayStats replay_order64(std::span<const Event> events, const ReplayConfig& cfg = {});
+ReplayStats replay_hotcold(std::span<const Event> events, const ReplayConfig& cfg = {});
 
 }  // namespace replay

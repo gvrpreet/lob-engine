@@ -24,12 +24,13 @@ struct NullSink {
 //   price levels : std::map            -> replace with flat ladder / bitmap (phase 3)
 //   id lookup    : std::unordered_map  -> replace with open-addressing table  (phase 3)
 //   order storage: OrderPool (slab)    -> already cache-aware (phase 2)
-class OrderBook {
+template <class Pool>
+class BasicOrderBook {
  public:
   using Bids = std::map<Price, PriceLevel, std::greater<Price>>;
   using Asks = std::map<Price, PriceLevel, std::less<Price>>;
 
-  explicit OrderBook(std::size_t capacity = 1u << 20) : pool_(capacity) {
+  explicit BasicOrderBook(std::size_t capacity = 1u << 20) : pool_(capacity) {
     index_.reserve(capacity);
   }
 
@@ -50,11 +51,7 @@ class OrderBook {
     if (type == OrderType::Market) return AddResult::Discarded;
 
     const Handle h = pool_.allocate();  // cannot fail: checked above, and matching only frees
-    Order& o = pool_[h];
-    o.id = id;
-    o.price = price;
-    o.qty = qty;
-    o.side = side;
+    pool_.set_order(h, id, price, qty, side);
     if (side == Side::Buy) bids_[price].push_back(pool_, h);
     else asks_[price].push_back(pool_, h);
     index_.emplace(id, h);
@@ -66,7 +63,7 @@ class OrderBook {
     const auto it = index_.find(id);
     if (it == index_.end()) return false;
     const Handle h = it->second;
-    if (pool_[h].side == Side::Buy) unlink_and_prune(bids_, h);
+    if (pool_.side(h) == Side::Buy) unlink_and_prune(bids_, h);
     else unlink_and_prune(asks_, h);
     index_.erase(it);
     pool_.release(h);
@@ -97,7 +94,26 @@ class OrderBook {
 
   // Order-sensitive hash of the entire book state. Used to prove that two
   // replays (or an optimized vs baseline implementation) are identical.
-  std::uint64_t checksum() const noexcept;
+  std::uint64_t checksum() const noexcept {
+    std::uint64_t h = 1469598103934665603ULL;
+    const auto mix = [&h](std::uint64_t value) {
+      h ^= value;
+      h *= 1099511628211ULL;
+    };
+    const auto walk = [&](const auto& book, std::uint64_t tag) {
+      for (const auto& [price, level] : book) {
+        mix(tag);
+        mix(static_cast<std::uint64_t>(price));
+        for (Handle handle = level.head; handle != kInvalid; handle = pool_.next(handle)) {
+          mix(pool_.id(handle));
+          mix(pool_.qty(handle));
+        }
+      }
+    };
+    walk(bids_, 1);
+    walk(asks_, 2);
+    return h;
+  }
 
  private:
   static bool crosses(Side taker, Price limit, Price level) noexcept {
@@ -115,15 +131,15 @@ class OrderBook {
       PriceLevel& level = lit->second;
       while (qty > 0 && !level.empty()) {
         const Handle h = level.head;  // oldest order = time priority
-        Order& maker = pool_[h];
-        const Qty fill = std::min(qty, maker.qty);
-        maker.qty -= fill;
+        const Qty maker_qty = pool_.qty(h);
+        const Qty fill = std::min(qty, maker_qty);
+        pool_.set_qty(h, maker_qty - fill);
         level.total_qty -= fill;
         qty -= fill;
-        sink(Trade{taker, maker.id, level_price, fill, ts});
-        if (maker.qty == 0) {
+        sink(Trade{taker, pool_.id(h), level_price, fill, ts});
+        if (maker_qty == fill) {
           level.unlink(pool_, h);
-          index_.erase(maker.id);
+          index_.erase(pool_.id(h));
           pool_.release(h);
         }
       }
@@ -134,15 +150,21 @@ class OrderBook {
 
   template <class Book>
   void unlink_and_prune(Book& book, Handle h) {
-    const auto lit = book.find(pool_[h].price);
+    const auto lit = book.find(pool_.price(h));
     lit->second.unlink(pool_, h);
     if (lit->second.empty()) book.erase(lit);
   }
 
-  OrderPool pool_;
+  Pool pool_;
   Bids bids_;
   Asks asks_;
   std::unordered_map<OrderId, Handle> index_;
 };
+
+using OrderBook = BasicOrderBook<OrderPool>;
+using NaiveOrderBook = BasicOrderBook<HeapOrderPool>;
+using OrderBook48 = BasicOrderBook<OrderPool48>;
+using OrderBook64 = BasicOrderBook<OrderPool64>;
+using HotColdOrderBook = BasicOrderBook<HotColdOrderPool>;
 
 }  // namespace lob

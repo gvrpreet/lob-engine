@@ -1,6 +1,7 @@
 // Throughput + latency microbench over synthetic events. Generation is excluded from timing.
 // For trustworthy numbers follow docs/02-workflow.md ("Benchmark protocol").
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <vector>
 
@@ -12,19 +13,45 @@ int main(int argc, char** argv) {
   const auto ev = replay::generate_events(n);
 
   replay::ReplayConfig warm;
-  (void)replay::replay(ev, warm);  // warm caches, page-fault the pool
+  (void)replay::replay(ev, warm);
+  (void)replay::replay_naive(ev, warm);
+  (void)replay::replay_order48(ev, warm);
+  (void)replay::replay_order64(ev, warm);
+  (void)replay::replay_hotcold(ev, warm);
 
-  std::vector<double> rates;
-  std::uint64_t checksum = 0;
+  std::array<std::vector<double>, 5> rates;
+  std::array<std::uint64_t, 5> checksums{};
+  const auto run_case = [&](std::size_t index) {
+    switch (index) {
+      case 0: return replay::replay(ev, warm);
+      case 1: return replay::replay_naive(ev, warm);
+      case 2: return replay::replay_order48(ev, warm);
+      case 3: return replay::replay_order64(ev, warm);
+      default: return replay::replay_hotcold(ev, warm);
+    }
+  };
   for (int i = 0; i < 7; ++i) {
-    const auto st = replay::replay(ev, warm);
-    rates.push_back(st.events_per_sec());
-    checksum = st.checksum;
+    for (std::size_t offset = 0; offset < rates.size(); ++offset) {
+      const std::size_t index = (static_cast<std::size_t>(i) + offset) % rates.size();
+      const auto stats = run_case(index);
+      rates[index].push_back(stats.events_per_sec());
+      checksums[index] = stats.checksum;
+    }
   }
-  std::sort(rates.begin(), rates.end());
-  std::printf("events=%zu runs=7  min=%.2fM  median=%.2fM  max=%.2fM events/s  checksum=%016llx\n", n,
-              rates.front() / 1e6, rates[3] / 1e6, rates.back() / 1e6,
-              (unsigned long long)checksum);
+  for (auto& sample : rates) std::sort(sample.begin(), sample.end());
+  for (std::uint64_t checksum : checksums) {
+    if (checksum != checksums[0]) {
+      std::fprintf(stderr, "checksum mismatch across order storage variants\n");
+      return 1;
+    }
+  }
+  constexpr std::array<const char*, 5> labels{"Order 32B", "new/delete", "Order 48B",
+                                               "Order 64B", "hot/cold"};
+  std::printf("events=%zu runs=7 checksum=%016llx\n", n, (unsigned long long)checksums[0]);
+  for (std::size_t index = 0; index < rates.size(); ++index) {
+    std::printf("%-12s median=%.2fM events/s (min=%.2fM max=%.2fM)\n", labels[index],
+                rates[index][3] / 1e6, rates[index].front() / 1e6, rates[index].back() / 1e6);
+  }
 
   replay::ReplayConfig lat;
   lat.measure_latency = true;
