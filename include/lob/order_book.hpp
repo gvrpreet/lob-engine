@@ -34,6 +34,8 @@ class BasicOrderBook {
     index_.reserve(capacity);
   }
 
+  void prefault_pool() noexcept { pool_.prefault(); }
+
   // Submit a market or limit order. `sink(const Trade&)` is invoked per fill.
   // Market orders ignore `price`. Unfilled market remainder is discarded.
   // Limit orders are conservatively rejected when the pool is full.

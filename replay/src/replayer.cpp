@@ -13,6 +13,7 @@ ReplayStats replay_with_book(std::span<const Event> events, const ReplayConfig& 
                              IStrategy* strat) {
   using clock = std::chrono::steady_clock;
   Book book(cfg.book_capacity);
+  if (cfg.prefault) book.prefault_pool();
   ReplayStats st;
   if (cfg.measure_latency) st.latency_ns.reserve(events.size());
 

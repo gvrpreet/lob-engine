@@ -13,6 +13,7 @@ int main(int argc, char** argv) {
   const auto ev = replay::generate_events(n);
 
   replay::ReplayConfig warm;
+  warm.prefault = true;
   (void)replay::replay(ev, warm);
   (void)replay::replay_naive(ev, warm);
   (void)replay::replay_order48(ev, warm);

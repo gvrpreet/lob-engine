@@ -3,6 +3,10 @@
 #include <memory>
 #include <vector>
 
+#if defined(__linux__)
+#include <sys/mman.h>
+#endif
+
 #include "lob/order.hpp"
 
 namespace lob {
@@ -58,6 +62,18 @@ class BasicOrderPool {
   bool full() const noexcept { return free_head_ == kInvalid; }
   std::size_t live() const noexcept { return live_; }
   std::size_t capacity() const noexcept { return slots_.size(); }
+
+  void prefault() noexcept {
+    if (slots_.empty()) return;
+    volatile StoredOrder* p = const_cast<volatile StoredOrder*>(slots_.data());
+    for (std::size_t i = 0; i < slots_.size(); ++i) {
+      (void)p[i];
+    }
+#if defined(__linux__)
+    std::size_t bytes = slots_.size() * sizeof(StoredOrder);
+    (void)madvise(const_cast<void*>(static_cast<const void*>(slots_.data())), bytes, MADV_WILLNEED);
+#endif
+  }
 
  private:
   std::vector<StoredOrder> slots_;
@@ -123,6 +139,20 @@ class BasicHeapOrderPool {
   bool full() const noexcept { return free_head_ == kInvalid; }
   std::size_t live() const noexcept { return live_; }
   std::size_t capacity() const noexcept { return slots_.size(); }
+
+  void prefault() noexcept {
+    for (std::size_t i = 0; i < slots_.size(); ++i) {
+      if (slots_[i].order) {
+        (void)*slots_[i].order;
+      }
+    }
+#if defined(__linux__)
+    if (!slots_.empty()) {
+      std::size_t bytes = slots_.size() * sizeof(Slot);
+      (void)madvise(static_cast<void*>(slots_.data()), bytes, MADV_WILLNEED);
+    }
+#endif
+  }
 
  private:
   using Allocator = std::allocator<StoredOrder>;
@@ -201,6 +231,21 @@ class HotColdOrderPool {
   bool full() const noexcept { return free_head_ == kInvalid; }
   std::size_t live() const noexcept { return live_; }
   std::size_t capacity() const noexcept { return hot_.size(); }
+
+  void prefault() noexcept {
+    for (std::size_t i = 0; i < hot_.size(); ++i) {
+      (void)hot_[i];
+      (void)cold_[i];
+    }
+#if defined(__linux__)
+    if (!hot_.empty()) {
+      std::size_t hot_bytes = hot_.size() * sizeof(HotFields);
+      std::size_t cold_bytes = cold_.size() * sizeof(ColdFields);
+      (void)madvise(const_cast<void*>(static_cast<const void*>(hot_.data())), hot_bytes, MADV_WILLNEED);
+      (void)madvise(const_cast<void*>(static_cast<const void*>(cold_.data())), cold_bytes, MADV_WILLNEED);
+    }
+#endif
+  }
 
  private:
   struct HotFields {

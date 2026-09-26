@@ -148,3 +148,15 @@ TEST(filled_order_id_can_be_reused) {
   CHECK(b.add(1, Side::Buy, OrderType::Limit, 99, 3, 3, NullSink{}) == AddResult::Rested);
   CHECK(b.contains(1) && b.order_count() == 1);
 }
+
+TEST(prefault_pool_does_not_change_state) {
+  OrderBook b(64); Collector c;
+  b.add(1, Side::Buy, OrderType::Limit, 100, 5, 1, c);
+  b.add(2, Side::Sell, OrderType::Limit, 101, 3, 2, c);
+  b.prefault_pool();
+  CHECK(b.order_count() == 2);
+  CHECK(b.volume_at(Side::Buy, 100) == 5);
+  CHECK(b.volume_at(Side::Sell, 101) == 3);
+  CHECK(b.best_bid().has_value() && *b.best_bid() == 100);
+  CHECK(b.best_ask().has_value() && *b.best_ask() == 101);
+}
