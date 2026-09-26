@@ -35,6 +35,11 @@ ReplayStats replay_with_book(std::span<const Event> events, const ReplayConfig& 
       ++st.cancel_misses;
     }
 
+    if (cfg.measure_book_shape) {
+      const auto levels = book.level_count(lob::Side::Buy) + book.level_count(lob::Side::Sell);
+      st.peak_levels = std::max(st.peak_levels, static_cast<std::uint64_t>(levels));
+    }
+
     if (cfg.measure_latency) {
       st.latency_ns.push_back(static_cast<std::uint32_t>(
           std::chrono::duration_cast<std::chrono::nanoseconds>(clock::now() - start).count()));
@@ -46,6 +51,9 @@ ReplayStats replay_with_book(std::span<const Event> events, const ReplayConfig& 
   }
   st.seconds = std::chrono::duration<double>(clock::now() - t0).count();
   st.final_orders = book.order_count();
+  if (cfg.measure_book_shape) {
+    st.final_levels = book.level_count(lob::Side::Buy) + book.level_count(lob::Side::Sell);
+  }
   st.checksum = book.checksum();
   return st;
 }
@@ -83,6 +91,7 @@ ReplayStats replay_hotcold(std::span<const Event> events, const ReplayConfig& cf
 ReplayStats replay_dense(std::span<const Event> events, const ReplayConfig& cfg) {
   return replay_with_book<lob::DenseOrderBook>(events, cfg, nullptr);
 }
+
 ReplayStats replay_sorted(std::span<const Event> events, const ReplayConfig& cfg) {
   return replay_with_book<lob::SortedOrderBook>(events, cfg, nullptr);
 }

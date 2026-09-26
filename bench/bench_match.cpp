@@ -12,6 +12,10 @@ int main(int argc, char** argv) {
   const std::size_t n = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : 2'000'000;
   const auto ev = replay::generate_events(n);
 
+  replay::ReplayConfig shape_config;
+  shape_config.measure_book_shape = true;
+  const auto shape = replay::replay(ev, shape_config);
+
   replay::ReplayConfig warm;
   (void)replay::replay(ev, warm);
   (void)replay::replay_naive(ev, warm);
@@ -52,7 +56,9 @@ int main(int argc, char** argv) {
   constexpr std::array<const char*, 7> labels{"Order 32B", "new/delete", "Order 48B",
                                                "Order 64B", "hot/cold", "dense levels",
                                                "sorted levels"};
-  std::printf("events=%zu runs=7 checksum=%016llx\n", n, (unsigned long long)checksums[0]);
+  std::printf("events=%zu runs=7 checksum=%016llx final_levels=%llu peak_levels=%llu\n", n,
+              (unsigned long long)checksums[0], (unsigned long long)shape.final_levels,
+              (unsigned long long)shape.peak_levels);
   for (std::size_t index = 0; index < rates.size(); ++index) {
     std::printf("%-12s median=%.2fM events/s (min=%.2fM max=%.2fM)\n", labels[index],
                 rates[index][3] / 1e6, rates[index].front() / 1e6, rates[index].back() / 1e6);

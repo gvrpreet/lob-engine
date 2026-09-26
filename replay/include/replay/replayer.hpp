@@ -19,11 +19,13 @@ class IStrategy {
 struct ReplayConfig {
   std::size_t book_capacity = 1u << 20;
   bool measure_latency = false;  // per-event steady_clock timing (adds ~20-30ns overhead)
+  bool measure_book_shape = false;  // collect final and peak active price-level counts
 };
 
 struct ReplayStats {
   std::uint64_t events = 0, trades = 0, volume = 0;
   std::uint64_t rejected = 0, cancel_misses = 0, final_orders = 0;
+  std::uint64_t final_levels = 0, peak_levels = 0;
   std::uint64_t checksum = 0;  // book state hash at end of replay
   double seconds = 0;
   std::vector<std::uint32_t> latency_ns;  // filled only if measure_latency

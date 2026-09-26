@@ -35,6 +35,7 @@ can benchmark any historical state: `git checkout phase1-baseline && scripts/ben
 2. Set CPU governor to `performance`; close browsers/IDEs; ideally disable turbo for stability, or record that it's on.
 3. Pin: `taskset -c <core>` (prefer a physical core not shared with SMT sibling; `isolcpus` for the best isolation).
 4. Generate the log **outside** the timed region (done in `bench_match`); warm-up run first (page-faults the pool, warms caches).
+`bench_match` also reports final and peak active price-level counts from a separate untimed pass; include these in interpretation so structural comparisons are tied to actual book depth.
 5. ≥ 7 runs; report min / median / max, not just best. Big spread ⇒ noisy machine, fix that first.
 6. Report throughput **and** latency percentiles (p50/p90/p99/p99.9). Never report the mean latency alone.
 7. Know your timer: `steady_clock` costs ~20–30 ns/call, so per-event latency has a floor. Use `rdtscp` + calibration for sub-100 ns claims, or time batches.

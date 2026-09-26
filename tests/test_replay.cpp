@@ -77,6 +77,21 @@ TEST(sorted_price_levels_match_tree_replay) {
   CHECK(tree.final_orders == sorted.final_orders);
 }
 
+TEST(book_shape_metrics_are_opt_in_and_match_across_level_stores) {
+  const auto ev = replay::generate_events(50'000, 47);
+  const auto default_stats = replay::replay(ev);
+  replay::ReplayConfig cfg;
+  cfg.measure_book_shape = true;
+  const auto tree = replay::replay(ev, cfg);
+  const auto dense = replay::replay_dense(ev, cfg);
+  const auto sorted = replay::replay_sorted(ev, cfg);
+
+  CHECK(default_stats.final_levels == 0 && default_stats.peak_levels == 0);
+  CHECK(tree.final_levels > 0 && tree.peak_levels >= tree.final_levels);
+  CHECK(tree.final_levels == dense.final_levels && tree.final_levels == sorted.final_levels);
+  CHECK(tree.peak_levels == dense.peak_levels && tree.peak_levels == sorted.peak_levels);
+}
+
 TEST(event_log_roundtrip) {
   const auto ev = replay::generate_events(5'000, 11);
   const std::string path = "/tmp/lob_test_events.bin";
