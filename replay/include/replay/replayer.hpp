@@ -39,5 +39,6 @@ ReplayStats replay_order48(std::span<const Event> events, const ReplayConfig& cf
 ReplayStats replay_order64(std::span<const Event> events, const ReplayConfig& cfg = {});
 ReplayStats replay_hotcold(std::span<const Event> events, const ReplayConfig& cfg = {});
 ReplayStats replay_dense(std::span<const Event> events, const ReplayConfig& cfg = {});
+ReplayStats replay_sorted(std::span<const Event> events, const ReplayConfig& cfg = {});
 
 }  // namespace replay

@@ -67,6 +67,16 @@ TEST(dense_price_levels_match_tree_replay) {
   CHECK(tree.final_orders == dense.final_orders);
 }
 
+TEST(sorted_price_levels_match_tree_replay) {
+  const auto ev = replay::generate_events(150'000, 43);
+  const auto tree = replay::replay(ev);
+  const auto sorted = replay::replay_sorted(ev);
+  CHECK(tree.checksum == sorted.checksum);
+  CHECK(tree.trades == sorted.trades && tree.volume == sorted.volume);
+  CHECK(tree.rejected == sorted.rejected && tree.cancel_misses == sorted.cancel_misses);
+  CHECK(tree.final_orders == sorted.final_orders);
+}
+
 TEST(event_log_roundtrip) {
   const auto ev = replay::generate_events(5'000, 11);
   const std::string path = "/tmp/lob_test_events.bin";

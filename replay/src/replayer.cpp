@@ -83,5 +83,8 @@ ReplayStats replay_hotcold(std::span<const Event> events, const ReplayConfig& cf
 ReplayStats replay_dense(std::span<const Event> events, const ReplayConfig& cfg) {
   return replay_with_book<lob::DenseOrderBook>(events, cfg, nullptr);
 }
+ReplayStats replay_sorted(std::span<const Event> events, const ReplayConfig& cfg) {
+  return replay_with_book<lob::SortedOrderBook>(events, cfg, nullptr);
+}
 
 }  // namespace replay

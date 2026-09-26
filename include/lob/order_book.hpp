@@ -172,5 +172,6 @@ using OrderBook48 = BasicOrderBook<OrderPool48>;
 using OrderBook64 = BasicOrderBook<OrderPool64>;
 using HotColdOrderBook = BasicOrderBook<HotColdOrderPool>;
 using DenseOrderBook = BasicOrderBook<OrderPool, DensePriceLevels>;
+using SortedOrderBook = BasicOrderBook<OrderPool, SortedPriceLevels>;
 
 }  // namespace lob

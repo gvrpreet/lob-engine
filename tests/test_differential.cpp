@@ -48,3 +48,4 @@ TEST(differential_seed_1) { run_differential<OrderBook>(1, 100'000); }
 TEST(differential_seed_2) { run_differential<OrderBook>(2, 100'000); }
 TEST(differential_seed_3) { run_differential<OrderBook>(0xC0FFEE, 100'000); }
 TEST(dense_differential_seed_1) { run_differential<DenseOrderBook>(1, 100'000, 9'990); }
+TEST(sorted_differential_seed_1) { run_differential<SortedOrderBook>(1, 100'000, 9'990); }

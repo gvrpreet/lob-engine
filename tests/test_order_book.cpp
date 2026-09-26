@@ -178,6 +178,55 @@ TEST(dense_order_book_matches_tree_through_overflow_prices) {
   CHECK(tree.checksum() == dense.checksum());
 }
 
+TEST(sorted_price_levels_keep_best_at_back_for_bids_and_asks) {
+  SortedPriceLevels<std::less<Price>> asks;
+  SortedPriceLevels<std::greater<Price>> bids;
+  for (Price price : std::vector<Price>{11, 9, 12, 10}) {
+    asks.get_or_create(price).total_qty = 1;
+    bids.get_or_create(price).total_qty = 1;
+  }
+  CHECK(asks.best_price() == 9);
+  CHECK(bids.best_price() == 12);
+
+  std::vector<Price> ask_order;
+  asks.for_each_sorted([&](Price price, const PriceLevel&) { ask_order.push_back(price); });
+  CHECK((ask_order == std::vector<Price>{9, 10, 11, 12}));
+  std::vector<Price> bid_order;
+  bids.for_each_sorted([&](Price price, const PriceLevel&) { bid_order.push_back(price); });
+  CHECK((bid_order == std::vector<Price>{12, 11, 10, 9}));
+
+  asks.erase(10);
+  CHECK(asks.find(10) == nullptr && asks.size() == 3);
+}
+
+TEST(sorted_order_book_matches_tree_fills_and_cancels) {
+  OrderBook tree(32);
+  SortedOrderBook sorted(32);
+  std::vector<Trade> tree_trades;
+  std::vector<Trade> sorted_trades;
+  for (Price price : std::vector<Price>{9'999, 10'001, 9'998, 10'002, 10'000}) {
+    const auto tree_result = tree.add(static_cast<OrderId>(price), Side::Sell, OrderType::Limit,
+                                      price, 2, 1,
+                                      [&](const Trade& trade) { tree_trades.push_back(trade); });
+    const auto sorted_result = sorted.add(
+        static_cast<OrderId>(price), Side::Sell, OrderType::Limit, price, 2, 1,
+        [&](const Trade& trade) { sorted_trades.push_back(trade); });
+    CHECK(tree_result == sorted_result);
+    CHECK(tree.best_ask() == sorted.best_ask());
+    CHECK(tree.checksum() == sorted.checksum());
+  }
+
+  CHECK(tree.cancel(10'001) == sorted.cancel(10'001));
+  const auto tree_result = tree.add(99, Side::Buy, OrderType::Market, 0, 20, 2,
+                                   [&](const Trade& trade) { tree_trades.push_back(trade); });
+  const auto sorted_result = sorted.add(
+      99, Side::Buy, OrderType::Market, 0, 20, 2,
+      [&](const Trade& trade) { sorted_trades.push_back(trade); });
+  CHECK(tree_result == sorted_result);
+  CHECK(tree_trades == sorted_trades);
+  CHECK(tree.checksum() == sorted.checksum());
+}
+
 TEST(pool_slots_are_reused) {
   OrderBook b(4);
   for (OrderId i = 1; i <= 4; ++i) b.add(i, Side::Buy, OrderType::Limit, 100 - i, 1, i, NullSink{});

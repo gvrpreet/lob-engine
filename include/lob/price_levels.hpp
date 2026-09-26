@@ -227,4 +227,75 @@ class DensePriceLevels {
   std::size_t size_ = 0;
 };
 
+template <class Compare>
+class SortedPriceLevels {
+ public:
+  bool empty() const noexcept { return levels_.empty(); }
+  std::size_t size() const noexcept { return levels_.size(); }
+
+  PriceLevel& get_or_create(Price price) {
+    auto it = lower_bound(price);
+    if (it != levels_.end() && it->price == price) return it->level;
+    it = levels_.insert(it, Entry{price, PriceLevel{}});
+    return it->level;
+  }
+
+  PriceLevel* find(Price price) noexcept {
+    const auto it = lower_bound(price);
+    return it == levels_.end() || it->price != price ? nullptr : &it->level;
+  }
+
+  const PriceLevel* find(Price price) const noexcept {
+    const auto it = lower_bound(price);
+    return it == levels_.end() || it->price != price ? nullptr : &it->level;
+  }
+
+  std::optional<Price> best_price() const noexcept {
+    return levels_.empty() ? std::nullopt : std::optional<Price>(levels_.back().price);
+  }
+
+  PriceLevel* best(Price& price) noexcept {
+    if (levels_.empty()) return nullptr;
+    price = levels_.back().price;
+    return &levels_.back().level;
+  }
+
+  void erase(Price price) {
+    const auto it = lower_bound(price);
+    if (it != levels_.end() && it->price == price) levels_.erase(it);
+  }
+
+  template <class Function>
+  void for_each_sorted(Function&& function) const {
+    for (auto it = levels_.rbegin(); it != levels_.rend(); ++it) {
+      function(it->price, it->level);
+    }
+  }
+
+ private:
+  struct Entry {
+    Price price;
+    PriceLevel level;
+  };
+
+  using Iterator = typename std::vector<Entry>::iterator;
+  using ConstIterator = typename std::vector<Entry>::const_iterator;
+
+  Iterator lower_bound(Price price) noexcept {
+    return std::lower_bound(levels_.begin(), levels_.end(), price,
+                            [](const Entry& entry, Price value) {
+                              return Compare{}(value, entry.price);
+                            });
+  }
+
+  ConstIterator lower_bound(Price price) const noexcept {
+    return std::lower_bound(levels_.begin(), levels_.end(), price,
+                            [](const Entry& entry, Price value) {
+                              return Compare{}(value, entry.price);
+                            });
+  }
+
+  std::vector<Entry> levels_;
+};
+
 }  // namespace lob

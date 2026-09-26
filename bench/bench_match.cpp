@@ -19,9 +19,10 @@ int main(int argc, char** argv) {
   (void)replay::replay_order64(ev, warm);
   (void)replay::replay_hotcold(ev, warm);
   (void)replay::replay_dense(ev, warm);
+  (void)replay::replay_sorted(ev, warm);
 
-  std::array<std::vector<double>, 6> rates;
-  std::array<std::uint64_t, 6> checksums{};
+  std::array<std::vector<double>, 7> rates;
+  std::array<std::uint64_t, 7> checksums{};
   const auto run_case = [&](std::size_t index) {
     switch (index) {
       case 0: return replay::replay(ev, warm);
@@ -29,7 +30,8 @@ int main(int argc, char** argv) {
       case 2: return replay::replay_order48(ev, warm);
       case 3: return replay::replay_order64(ev, warm);
       case 4: return replay::replay_hotcold(ev, warm);
-      default: return replay::replay_dense(ev, warm);
+      case 5: return replay::replay_dense(ev, warm);
+      default: return replay::replay_sorted(ev, warm);
     }
   };
   for (int i = 0; i < 7; ++i) {
@@ -47,8 +49,9 @@ int main(int argc, char** argv) {
       return 1;
     }
   }
-  constexpr std::array<const char*, 6> labels{"Order 32B", "new/delete", "Order 48B",
-                                               "Order 64B", "hot/cold", "dense levels"};
+  constexpr std::array<const char*, 7> labels{"Order 32B", "new/delete", "Order 48B",
+                                               "Order 64B", "hot/cold", "dense levels",
+                                               "sorted levels"};
   std::printf("events=%zu runs=7 checksum=%016llx\n", n, (unsigned long long)checksums[0]);
   for (std::size_t index = 0; index < rates.size(); ++index) {
     std::printf("%-12s median=%.2fM events/s (min=%.2fM max=%.2fM)\n", labels[index],
