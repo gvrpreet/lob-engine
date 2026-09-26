@@ -1,4 +1,4 @@
-// Throughput + latency microbench over synthetic events. Generation is excluded from timing.
+// Usage: bench_match [event-count] [controlled-active-level-count]. Generation and shape passes are excluded from timing.
 // For trustworthy numbers follow docs/02-workflow.md ("Benchmark protocol").
 #include <algorithm>
 #include <array>
@@ -10,7 +10,9 @@
 
 int main(int argc, char** argv) {
   const std::size_t n = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : 2'000'000;
-  const auto ev = replay::generate_events(n);
+  const std::size_t active_levels = argc > 2 ? std::strtoull(argv[2], nullptr, 10) : 0;
+  const auto ev = active_levels == 0 ? replay::generate_events(n)
+                                     : replay::generate_depth_events(n, active_levels);
 
   replay::ReplayConfig shape_config;
   shape_config.measure_book_shape = true;
@@ -56,8 +58,10 @@ int main(int argc, char** argv) {
   constexpr std::array<const char*, 7> labels{"Order 32B", "new/delete", "Order 48B",
                                                "Order 64B", "hot/cold", "dense levels",
                                                "sorted levels"};
-  std::printf("events=%zu runs=7 checksum=%016llx final_levels=%llu peak_levels=%llu\n", n,
-              (unsigned long long)checksums[0], (unsigned long long)shape.final_levels,
+  std::printf("events=%zu requested_levels=%zu runs=7 checksum=%016llx trades=%llu final_levels=%llu peak_levels=%llu\n",
+              n, active_levels,
+              (unsigned long long)checksums[0], (unsigned long long)shape.trades,
+              (unsigned long long)shape.final_levels,
               (unsigned long long)shape.peak_levels);
   for (std::size_t index = 0; index < rates.size(); ++index) {
     std::printf("%-12s median=%.2fM events/s (min=%.2fM max=%.2fM)\n", labels[index],

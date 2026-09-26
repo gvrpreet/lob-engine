@@ -92,6 +92,25 @@ TEST(book_shape_metrics_are_opt_in_and_match_across_level_stores) {
   CHECK(tree.peak_levels == dense.peak_levels && tree.peak_levels == sorted.peak_levels);
 }
 
+TEST(controlled_depth_events_hold_requested_level_count) {
+  for (const std::size_t depth : {10, 25, 50}) {
+    const auto events = replay::generate_depth_events(20'000, depth, 53);
+    const auto repeated = replay::generate_depth_events(20'000, depth, 53);
+    CHECK(events.size() == repeated.size());
+    CHECK(std::memcmp(events.data(), repeated.data(), events.size() * sizeof(replay::Event)) == 0);
+
+    replay::ReplayConfig cfg;
+    cfg.measure_book_shape = true;
+    const auto tree = replay::replay(events, cfg);
+    const auto dense = replay::replay_dense(events, cfg);
+    const auto sorted = replay::replay_sorted(events, cfg);
+    CHECK(tree.final_levels == depth && tree.peak_levels == depth);
+    CHECK(tree.checksum == dense.checksum && tree.checksum == sorted.checksum);
+    CHECK(tree.trades == 0 && tree.trades == dense.trades && tree.trades == sorted.trades);
+    CHECK(tree.final_levels == dense.final_levels && tree.final_levels == sorted.final_levels);
+  }
+}
+
 TEST(event_log_roundtrip) {
   const auto ev = replay::generate_events(5'000, 11);
   const std::string path = "/tmp/lob_test_events.bin";
