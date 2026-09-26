@@ -84,8 +84,4 @@ ReplayStats replay_dense(std::span<const Event> events, const ReplayConfig& cfg)
   return replay_with_book<lob::DenseOrderBook>(events, cfg, nullptr);
 }
 
-ReplayStats replay_dense(std::span<const Event> events, const ReplayConfig& cfg) {
-  return replay_with_book<lob::DenseOrderBook>(events, cfg, nullptr);
-}
-
 }  // namespace replay
