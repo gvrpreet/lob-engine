@@ -6,7 +6,7 @@ Hardware: `<CPU model, cores, SMT on/off, RAM>` · OS/kernel: `<...>` · Compile
 | Date | Commit/tag | Change | Workload (events, seed) | ev/s median (min–max) | p50 / p99 / p99.9 ns | IPC | LLC-miss/event | Checksum | Notes |
 |---|---|---|---|---|---|---|---|---|---|
 | YYYY-MM-DD | phase1-baseline | std::map + unordered_map + slab | 5M, seed 42 | _fill_ | _fill_ | _fill_ | _fill_ | _fill_ | baseline |
-|  |  | flat id index |  |  |  |  |  |  |  |
+| 2026-09-26 | 6e1ea00 -> working tree | Phase 3(a): flat ID index | 1M, seed 42 | map 12.50-13.62M; flat 22.49-24.80M | p50/p99/p99.9 map 50/541-591/871-1192; flat 40/301-331/461-501 ns | N/A | Cachegrind LLd simulated 17.6 vs 19.4/event; flat higher; I refs/event 773 vs 490 | `ba7911b3a1dd1d8a` | Three seven-run invocations; same checksum; timing promising, not conclusive. See Phase 3(a) note. |
 |  |  | tick ladder + bitmap |  |  |  |  |  |  |  |
 | 2026-09-26 | 12dd168 + working tree | Phase 2(a): slab vs `std::allocator<Order>` | 1M, seed 42 | slab 14.07M (13.55–15.32); allocator 10.58M (10.11–11.20) | slab 50 / 530 / 819 ns | N/A (`perf` unavailable) | Cachegrind LLd simulated: 5.00 vs 6.25/event | `ba7911b3a1dd1d8a` | 7 alternating runs, pinned core 2; WSL2 noise/platform caveats below |
 | 2026-09-26 | 12dd168 + working tree | Phase 2(a), corrected matched-work profile | 1M, seed 42 | slab 12.97M (12.54–13.95); allocator 9.97M (9.40–11.19) | slab 50 / 560 / 930 ns | N/A (`perf` unavailable) | Cachegrind D1: 6.22 vs 7.54; LLd: 5.00 vs 6.25 simulated misses/event | `ba7911b3a1dd1d8a` | Corrected CLI profiles use `--no-strategy` for both; cache details below |

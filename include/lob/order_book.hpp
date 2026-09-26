@@ -5,8 +5,8 @@
 #include <functional>
 #include <map>
 #include <optional>
-#include <unordered_map>
 
+#include "lob/flat_order_index.hpp"
 #include "lob/order.hpp"
 #include "lob/order_pool.hpp"
 #include "lob/price_level.hpp"
@@ -22,7 +22,7 @@ struct NullSink {
 //
 // PHASE 1 BASELINE (see docs/00-roadmap.md):
 //   price levels : std::map            -> replace with flat ladder / bitmap (phase 3)
-//   id lookup    : std::unordered_map  -> replace with open-addressing table  (phase 3)
+//   id lookup    : FlatOrderIndex      -> open-addressing table (phase 3.1)
 //   order storage: OrderPool (slab)    -> already cache-aware (phase 2)
 template <class Pool>
 class BasicOrderBook {
@@ -30,12 +30,10 @@ class BasicOrderBook {
   using Bids = std::map<Price, PriceLevel, std::greater<Price>>;
   using Asks = std::map<Price, PriceLevel, std::less<Price>>;
 
-  explicit BasicOrderBook(std::size_t capacity = 1u << 20) : pool_(capacity) {
-    index_.reserve(capacity);
-  }
+  explicit BasicOrderBook(std::size_t capacity = 1u << 20)
+      : pool_(capacity), index_(capacity) {}
 
   void prefault_pool() noexcept { pool_.prefault(); }
-
   // Submit a market or limit order. `sink(const Trade&)` is invoked per fill.
   // Market orders ignore `price`. Unfilled market remainder is discarded.
   // Limit orders are conservatively rejected when the pool is full.
@@ -54,20 +52,22 @@ class BasicOrderBook {
 
     const Handle h = pool_.allocate();  // cannot fail: checked above, and matching only frees
     pool_.set_order(h, id, price, qty, side);
+    if (!index_.insert(id, h)) {
+      pool_.release(h);
+      return AddResult::Rejected;
+    }
     if (side == Side::Buy) bids_[price].push_back(pool_, h);
     else asks_[price].push_back(pool_, h);
-    index_.emplace(id, h);
     return qty == original ? AddResult::Rested : AddResult::PartiallyRested;
   }
 
   // Remove a resting order. Returns false if the id is not resting.
   bool cancel(OrderId id) {
-    const auto it = index_.find(id);
-    if (it == index_.end()) return false;
-    const Handle h = it->second;
+    Handle h;
+    if (!index_.find(id, h)) return false;
     if (pool_.side(h) == Side::Buy) unlink_and_prune(bids_, h);
     else unlink_and_prune(asks_, h);
-    index_.erase(it);
+    index_.erase(id);
     pool_.release(h);
     return true;
   }
@@ -160,7 +160,7 @@ class BasicOrderBook {
   Pool pool_;
   Bids bids_;
   Asks asks_;
-  std::unordered_map<OrderId, Handle> index_;
+  FlatOrderIndex index_;
 };
 
 using OrderBook = BasicOrderBook<OrderPool>;

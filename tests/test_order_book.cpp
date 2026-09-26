@@ -96,6 +96,22 @@ TEST(rejects_duplicate_id_and_zero_qty) {
   CHECK(b.add(2, Side::Buy, OrderType::Limit, 99, 0, 3, NullSink{}) == AddResult::Rejected);
 }
 
+TEST(flat_order_index_shifts_wrapped_collision_cluster_on_erase) {
+  FlatOrderIndex index(7);
+  CHECK(index.insert(6, 1));
+  CHECK(index.insert(14, 2));
+  CHECK(index.insert(22, 3));
+  CHECK(index.erase(14));
+
+  Handle handle = kInvalid;
+  CHECK(index.find(6, handle) && handle == 1);
+  CHECK(index.find(22, handle) && handle == 3);
+  CHECK(!index.contains(14));
+  CHECK(index.insert(30, 4));
+  CHECK(index.find(30, handle) && handle == 4);
+  CHECK(index.size() == 3);
+}
+
 TEST(pool_slots_are_reused) {
   OrderBook b(4);
   for (OrderId i = 1; i <= 4; ++i) b.add(i, Side::Buy, OrderType::Limit, 100 - i, 1, i, NullSink{});
