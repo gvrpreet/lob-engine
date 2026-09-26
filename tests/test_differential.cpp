@@ -9,8 +9,9 @@
 
 using namespace lob;
 
-static void run_differential(std::uint64_t seed, int ops) {
-  OrderBook book(1u << 16);
+template <class Book = OrderBook>
+static void run_differential(std::uint64_t seed, int ops, Price price_base = 90) {
+  Book book(1u << 16);
   RefBook ref;
   std::mt19937_64 rng(seed);
   std::vector<OrderId> ids;
@@ -25,7 +26,7 @@ static void run_differential(std::uint64_t seed, int ops) {
       const OrderId id = next++;
       const Side side = (rng() & 1) ? Side::Buy : Side::Sell;
       const OrderType type = r < 35 ? OrderType::Market : OrderType::Limit;
-      const Price price = 90 + static_cast<Price>(rng() % 21);
+      const Price price = price_base + static_cast<Price>(rng() % 21);
       const Qty qty = static_cast<Qty>(rng() % 60);  // includes 0 => reject path
       std::vector<Trade> a, b;
       const auto ra = book.add(id, side, type, price, qty, i, [&](const Trade& t) { a.push_back(t); });
@@ -43,6 +44,7 @@ static void run_differential(std::uint64_t seed, int ops) {
   CHECK(book.order_count() == ref.size());
 }
 
-TEST(differential_seed_1) { run_differential(1, 100'000); }
-TEST(differential_seed_2) { run_differential(2, 100'000); }
-TEST(differential_seed_3) { run_differential(0xC0FFEE, 100'000); }
+TEST(differential_seed_1) { run_differential<OrderBook>(1, 100'000); }
+TEST(differential_seed_2) { run_differential<OrderBook>(2, 100'000); }
+TEST(differential_seed_3) { run_differential<OrderBook>(0xC0FFEE, 100'000); }
+TEST(dense_differential_seed_1) { run_differential<DenseOrderBook>(1, 100'000, 9'990); }

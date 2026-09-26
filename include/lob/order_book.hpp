@@ -3,13 +3,13 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <map>
 #include <optional>
 
 #include "lob/flat_order_index.hpp"
 #include "lob/order.hpp"
 #include "lob/order_pool.hpp"
 #include "lob/price_level.hpp"
+#include "lob/price_levels.hpp"
 #include "lob/types.hpp"
 
 namespace lob {
@@ -21,14 +21,14 @@ struct NullSink {
 // Price-time priority limit order book. Single-threaded by design.
 //
 // PHASE 1 BASELINE (see docs/00-roadmap.md):
-//   price levels : std::map            -> replace with flat ladder / bitmap (phase 3)
+//   price levels : TreePriceLevels     -> dense bitmap experiment available (phase 3b)
 //   id lookup    : FlatOrderIndex      -> open-addressing table (phase 3.1)
 //   order storage: OrderPool (slab)    -> already cache-aware (phase 2)
-template <class Pool>
+template <class Pool, template <class> class LevelIndex = TreePriceLevels>
 class BasicOrderBook {
  public:
-  using Bids = std::map<Price, PriceLevel, std::greater<Price>>;
-  using Asks = std::map<Price, PriceLevel, std::less<Price>>;
+  using Bids = LevelIndex<std::greater<Price>>;
+  using Asks = LevelIndex<std::less<Price>>;
 
   explicit BasicOrderBook(std::size_t capacity = 1u << 20)
       : pool_(capacity), index_(capacity) {}
@@ -56,8 +56,8 @@ class BasicOrderBook {
       pool_.release(h);
       return AddResult::Rejected;
     }
-    if (side == Side::Buy) bids_[price].push_back(pool_, h);
-    else asks_[price].push_back(pool_, h);
+    if (side == Side::Buy) bids_.get_or_create(price).push_back(pool_, h);
+    else asks_.get_or_create(price).push_back(pool_, h);
     return qty == original ? AddResult::Rested : AddResult::PartiallyRested;
   }
 
@@ -74,10 +74,10 @@ class BasicOrderBook {
 
   // ---- read-only queries --------------------------------------------------
   std::optional<Price> best_bid() const {
-    return bids_.empty() ? std::nullopt : std::optional<Price>(bids_.begin()->first);
+    return bids_.best_price();
   }
   std::optional<Price> best_ask() const {
-    return asks_.empty() ? std::nullopt : std::optional<Price>(asks_.begin()->first);
+    return asks_.best_price();
   }
   std::size_t order_count() const noexcept { return index_.size(); }
   std::size_t level_count(Side s) const noexcept {
@@ -87,11 +87,11 @@ class BasicOrderBook {
 
   Qty volume_at(Side s, Price p) const {
     if (s == Side::Buy) {
-      const auto it = bids_.find(p);
-      return it == bids_.end() ? 0 : it->second.total_qty;
+      const PriceLevel* level = bids_.find(p);
+      return level == nullptr ? 0 : level->total_qty;
     }
-    const auto it = asks_.find(p);
-    return it == asks_.end() ? 0 : it->second.total_qty;
+    const PriceLevel* level = asks_.find(p);
+    return level == nullptr ? 0 : level->total_qty;
   }
 
   // Order-sensitive hash of the entire book state. Used to prove that two
@@ -103,14 +103,14 @@ class BasicOrderBook {
       h *= 1099511628211ULL;
     };
     const auto walk = [&](const auto& book, std::uint64_t tag) {
-      for (const auto& [price, level] : book) {
+      book.for_each_sorted([&](Price price, const PriceLevel& level) {
         mix(tag);
         mix(static_cast<std::uint64_t>(price));
         for (Handle handle = level.head; handle != kInvalid; handle = pool_.next(handle)) {
           mix(pool_.id(handle));
           mix(pool_.qty(handle));
         }
-      }
+      });
     };
     walk(bids_, 1);
     walk(asks_, 2);
@@ -126,11 +126,12 @@ class BasicOrderBook {
   Qty match(Book& opposite, OrderId taker, Side side, OrderType type, Price limit, Qty qty,
             Timestamp ts, Sink& sink) {
     while (qty > 0 && !opposite.empty()) {
-      const auto lit = opposite.begin();  // best price on the opposite side
-      const Price level_price = lit->first;
+      Price level_price;
+      PriceLevel* level_ptr = opposite.best(level_price);
+      if (level_ptr == nullptr) break;
       if (type == OrderType::Limit && !crosses(side, limit, level_price)) break;
 
-      PriceLevel& level = lit->second;
+      PriceLevel& level = *level_ptr;
       while (qty > 0 && !level.empty()) {
         const Handle h = level.head;  // oldest order = time priority
         const Qty maker_qty = pool_.qty(h);
@@ -145,16 +146,18 @@ class BasicOrderBook {
           pool_.release(h);
         }
       }
-      if (level.empty()) opposite.erase(lit);
+      if (level.empty()) opposite.erase(level_price);
     }
     return qty;
   }
 
   template <class Book>
   void unlink_and_prune(Book& book, Handle h) {
-    const auto lit = book.find(pool_.price(h));
-    lit->second.unlink(pool_, h);
-    if (lit->second.empty()) book.erase(lit);
+    const Price price = pool_.price(h);
+    PriceLevel* level = book.find(price);
+    if (level == nullptr) return;
+    level->unlink(pool_, h);
+    if (level->empty()) book.erase(price);
   }
 
   Pool pool_;
@@ -168,5 +171,6 @@ using NaiveOrderBook = BasicOrderBook<HeapOrderPool>;
 using OrderBook48 = BasicOrderBook<OrderPool48>;
 using OrderBook64 = BasicOrderBook<OrderPool64>;
 using HotColdOrderBook = BasicOrderBook<HotColdOrderPool>;
+using DenseOrderBook = BasicOrderBook<OrderPool, DensePriceLevels>;
 
 }  // namespace lob

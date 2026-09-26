@@ -13,7 +13,6 @@ ReplayStats replay_with_book(std::span<const Event> events, const ReplayConfig& 
                              IStrategy* strat) {
   using clock = std::chrono::steady_clock;
   Book book(cfg.book_capacity);
-  if (cfg.prefault) book.prefault_pool();
   ReplayStats st;
   if (cfg.measure_latency) st.latency_ns.reserve(events.size());
 
@@ -79,6 +78,14 @@ ReplayStats replay_order64(std::span<const Event> events, const ReplayConfig& cf
 
 ReplayStats replay_hotcold(std::span<const Event> events, const ReplayConfig& cfg) {
   return replay_with_book<lob::HotColdOrderBook>(events, cfg, nullptr);
+}
+
+ReplayStats replay_dense(std::span<const Event> events, const ReplayConfig& cfg) {
+  return replay_with_book<lob::DenseOrderBook>(events, cfg, nullptr);
+}
+
+ReplayStats replay_dense(std::span<const Event> events, const ReplayConfig& cfg) {
+  return replay_with_book<lob::DenseOrderBook>(events, cfg, nullptr);
 }
 
 }  // namespace replay

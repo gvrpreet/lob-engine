@@ -19,7 +19,6 @@ class IStrategy {
 struct ReplayConfig {
   std::size_t book_capacity = 1u << 20;
   bool measure_latency = false;  // per-event steady_clock timing (adds ~20-30ns overhead)
-  bool prefault = false;         // touch all pool pages before timed replay to model warm page state
 };
 
 struct ReplayStats {
@@ -39,5 +38,7 @@ ReplayStats replay_naive(std::span<const Event> events, const ReplayConfig& cfg 
 ReplayStats replay_order48(std::span<const Event> events, const ReplayConfig& cfg = {});
 ReplayStats replay_order64(std::span<const Event> events, const ReplayConfig& cfg = {});
 ReplayStats replay_hotcold(std::span<const Event> events, const ReplayConfig& cfg = {});
+ReplayStats replay_dense(std::span<const Event> events, const ReplayConfig& cfg = {});
+ReplayStats replay_dense(std::span<const Event> events, const ReplayConfig& cfg = {});
 
 }  // namespace replay

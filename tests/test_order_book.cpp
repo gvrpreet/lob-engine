@@ -2,6 +2,7 @@
 #include <limits>
 
 #include "lob/order_book.hpp"
+#include "lob/price_levels.hpp"
 #include "testing.hpp"
 
 using namespace lob;
@@ -110,6 +111,71 @@ TEST(flat_order_index_shifts_wrapped_collision_cluster_on_erase) {
   CHECK(index.insert(30, 4));
   CHECK(index.find(30, handle) && handle == 4);
   CHECK(index.size() == 3);
+}
+
+TEST(dense_price_levels_order_central_and_overflow_prices) {
+  DensePriceLevels<std::less<Price>> asks;
+  for (Price price : std::vector<Price>{std::numeric_limits<Price>::max(), 11'001, 11'000, 10'000,
+                                        9'000, 8'999, std::numeric_limits<Price>::min()}) {
+    asks.get_or_create(price).total_qty = 1;
+  }
+
+  CHECK(asks.size() == 7);
+  CHECK(asks.best_price() == std::numeric_limits<Price>::min());
+  std::vector<Price> ordered;
+  asks.for_each_sorted([&](Price price, const PriceLevel&) { ordered.push_back(price); });
+  CHECK((ordered == std::vector<Price>{std::numeric_limits<Price>::min(), 8'999, 9'000, 10'000,
+                                       11'000, 11'001, std::numeric_limits<Price>::max()}));
+  CHECK(asks.find(10'000) != nullptr);
+  CHECK(asks.find(8'998) == nullptr);
+
+  asks.erase(10'000);
+  CHECK(asks.size() == 6);
+  CHECK(asks.find(10'000) == nullptr);
+  CHECK(asks.best_price() == std::numeric_limits<Price>::min());
+  CHECK(asks.get_or_create(10'000).empty());
+}
+
+TEST(dense_price_levels_order_bids_descending) {
+  DensePriceLevels<std::greater<Price>> bids;
+  for (Price price : std::vector<Price>{std::numeric_limits<Price>::min(), 8'999, 9'000, 10'000,
+                                        11'000, 11'001, std::numeric_limits<Price>::max()}) {
+    bids.get_or_create(price).total_qty = 1;
+  }
+
+  CHECK(bids.best_price() == std::numeric_limits<Price>::max());
+  std::vector<Price> ordered;
+  bids.for_each_sorted([&](Price price, const PriceLevel&) { ordered.push_back(price); });
+  CHECK((ordered == std::vector<Price>{std::numeric_limits<Price>::max(), 11'001, 11'000, 10'000,
+                                       9'000, 8'999, std::numeric_limits<Price>::min()}));
+}
+
+TEST(dense_order_book_matches_tree_through_overflow_prices) {
+  OrderBook tree(32);
+  DenseOrderBook dense(32);
+  std::vector<Trade> tree_trades;
+  std::vector<Trade> dense_trades;
+  const std::vector<Price> prices{std::numeric_limits<Price>::min(), 8'999, 9'000, 10'000,
+                                  11'000, 11'001, std::numeric_limits<Price>::max()};
+
+  for (std::size_t i = 0; i < prices.size(); ++i) {
+    const auto tree_result = tree.add(i + 1, Side::Sell, OrderType::Limit, prices[i], 1, i,
+                                      [&](const Trade& trade) { tree_trades.push_back(trade); });
+    const auto dense_result = dense.add(i + 1, Side::Sell, OrderType::Limit, prices[i], 1, i,
+                                        [&](const Trade& trade) { dense_trades.push_back(trade); });
+    CHECK(tree_result == dense_result);
+    CHECK(tree.checksum() == dense.checksum());
+    CHECK(tree.best_ask() == dense.best_ask());
+  }
+
+  const auto tree_result = tree.add(99, Side::Buy, OrderType::Market, 0, 10, 99,
+                                   [&](const Trade& trade) { tree_trades.push_back(trade); });
+  const auto dense_result = dense.add(99, Side::Buy, OrderType::Market, 0, 10, 99,
+                                      [&](const Trade& trade) { dense_trades.push_back(trade); });
+  CHECK(tree_result == dense_result);
+  CHECK(tree_trades == dense_trades);
+  CHECK(tree.order_count() == dense.order_count());
+  CHECK(tree.checksum() == dense.checksum());
 }
 
 TEST(pool_slots_are_reused) {
