@@ -8,13 +8,16 @@
 #endif
 
 #include "lob/order.hpp"
+#include "lob/page_allocator.hpp"
 
 namespace lob {
 
 // Fixed-capacity slab of Orders with an O(1) free list.
 // - No allocation on the hot path (all memory reserved up front).
 // - Slots never move, so Handles stay valid for the order's lifetime.
-template <class StoredOrder>
+// - The constructor writes every slot (free list), so all pages are faulted in before use.
+//   Alloc = HugePageAllocator requests THP for the slab before that first touch.
+template <class StoredOrder, template <class> class Alloc = std::allocator>
 class BasicOrderPool {
  public:
   using OrderType = StoredOrder;
@@ -63,6 +66,7 @@ class BasicOrderPool {
   std::size_t live() const noexcept { return live_; }
   std::size_t capacity() const noexcept { return slots_.size(); }
 
+  // Largely redundant: construction already touched every slot. Kept for the phase 2(d) test.
   void prefault() noexcept {
     if (slots_.empty()) return;
     volatile StoredOrder* p = const_cast<volatile StoredOrder*>(slots_.data());
@@ -76,12 +80,13 @@ class BasicOrderPool {
   }
 
  private:
-  std::vector<StoredOrder> slots_;
+  std::vector<StoredOrder, Alloc<StoredOrder>> slots_;
   Handle free_head_ = kInvalid;
   std::size_t live_ = 0;
 };
 
 using OrderPool = BasicOrderPool<Order>;
+using HugePageOrderPool = BasicOrderPool<Order, HugePageAllocator>;
 using OrderPool48 = BasicOrderPool<Order48>;
 using OrderPool64 = BasicOrderPool<Order64>;
 

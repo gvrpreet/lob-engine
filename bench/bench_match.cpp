@@ -34,9 +34,10 @@ int main(int argc, char** argv) {
   (void)replay::replay_hotcold(ev, warm);
   (void)replay::replay_dense(ev, warm);
   (void)replay::replay_sorted(ev, warm);
+  (void)replay::replay_hugepages(ev, warm);
 
-  std::array<std::vector<double>, 7> rates;
-  std::array<std::uint64_t, 7> checksums{};
+  std::array<std::vector<double>, 8> rates;
+  std::array<std::uint64_t, 8> checksums{};
   const auto run_case = [&](std::size_t index) {
     switch (index) {
       case 0: return replay::replay(ev, warm);
@@ -45,7 +46,8 @@ int main(int argc, char** argv) {
       case 3: return replay::replay_order64(ev, warm);
       case 4: return replay::replay_hotcold(ev, warm);
       case 5: return replay::replay_dense(ev, warm);
-      default: return replay::replay_sorted(ev, warm);
+      case 6: return replay::replay_sorted(ev, warm);
+      default: return replay::replay_hugepages(ev, warm);
     }
   };
   for (int i = 0; i < 7; ++i) {
@@ -63,9 +65,9 @@ int main(int argc, char** argv) {
       return 1;
     }
   }
-  constexpr std::array<const char*, 7> labels{"Order 32B", "new/delete", "Order 48B",
+  constexpr std::array<const char*, 8> labels{"Order 32B", "new/delete", "Order 48B",
                                                "Order 64B", "hot/cold", "dense levels",
-                                               "sorted levels"};
+                                               "sorted levels", "32B huge"};
   std::printf("events=%zu requested_levels=%zu trade_percent=%u runs=7 checksum=%016llx trades=%llu final_levels=%llu peak_levels=%llu\n",
               n, active_levels, trade_percent,
               (unsigned long long)checksums[0], (unsigned long long)shape.trades,

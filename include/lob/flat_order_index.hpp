@@ -3,16 +3,20 @@
 #include <cstddef>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 #include <vector>
 
+#include "lob/page_allocator.hpp"
 #include "lob/types.hpp"
 
 namespace lob {
 
-class FlatOrderIndex {
+// Alloc = HugePageAllocator backs the table with THP (phase 2d storage variant).
+template <template <class> class Alloc = std::allocator>
+class BasicFlatOrderIndex {
  public:
-  explicit FlatOrderIndex(std::size_t max_entries) : slots_(table_size_for(max_entries)) {}
+  explicit BasicFlatOrderIndex(std::size_t max_entries) : slots_(table_size_for(max_entries)) {}
 
   std::size_t size() const noexcept { return size_; }
 
@@ -94,8 +98,10 @@ class FlatOrderIndex {
     return kNotFound;
   }
 
-  std::vector<Entry> slots_;
+  std::vector<Entry, Alloc<Entry>> slots_;
   std::size_t size_ = 0;
 };
+
+using FlatOrderIndex = BasicFlatOrderIndex<>;
 
 }  // namespace lob

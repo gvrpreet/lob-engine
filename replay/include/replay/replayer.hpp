@@ -30,6 +30,7 @@ struct ReplayStats {
   std::uint64_t rejected = 0, cancel_misses = 0, final_orders = 0;
   std::uint64_t final_levels = 0, peak_levels = 0;
   std::uint64_t checksum = 0;  // book state hash at end of replay
+  std::uint64_t anon_huge_kb = 0;  // process AnonHugePages at end of replay_hugepages (Linux only)
   double seconds = 0;
   LatencyHistogram latency;  // per-event ns, filled only if measure_latency
 
@@ -45,5 +46,6 @@ ReplayStats replay_order64(std::span<const Event> events, const ReplayConfig& cf
 ReplayStats replay_hotcold(std::span<const Event> events, const ReplayConfig& cfg = {});
 ReplayStats replay_dense(std::span<const Event> events, const ReplayConfig& cfg = {});
 ReplayStats replay_sorted(std::span<const Event> events, const ReplayConfig& cfg = {});
+ReplayStats replay_hugepages(std::span<const Event> events, const ReplayConfig& cfg = {});
 
 }  // namespace replay

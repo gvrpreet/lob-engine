@@ -150,7 +150,7 @@ the default), similar room temperature, on AC, and an idle cool-down first.
 
 ## 9. Known limits of this setup
 - **`perf stat` counts include setup work.** They cover the whole `replay_cli` process, including reading the 32/160 MB log and building the book, so per-event values are upper bounds. Comparisons between variants are still fair, since every variant has the same overhead.
-- **The THP comparison is system-wide.** It flips `transparent_hugepage/enabled` for everything. A prefault-only baseline isn't available, because no CLI flag triggers the pool prefault yet (`prefault_pool()` is only called from a unit test).
+- **The THP comparison is system-wide.** It flips `transparent_hugepage/enabled` for everything, including the 160 MB event buffer. The `hugepages` perf variant (`replay_cli --huge-pages`, under the default THP `madvise`) puts only the order pool and id index on huge pages, which separates the book's own share of the gain. There is no separate "prefault-only" baseline, because the default pool is already fully faulted in by its constructor.
 - **Laptop limits:** boost stays whatever the firmware allows and is recorded in `env.txt`. Laptop thermals and boost make a < 5% cross-day spread hard to reach. If you miss it, that is itself a result: record it with the temperatures.
 
 ## 10. Troubleshooting

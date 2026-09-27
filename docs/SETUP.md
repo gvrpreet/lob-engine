@@ -155,12 +155,13 @@ Replays a log through the book and prints events, trades, rejects, cancel misses
 | `--hot-cold` | hot/cold split storage (Phase 2c) |
 | `--dense` | dense price-band level store (Phase 3b) |
 | `--sorted` | sorted-vector level store (Phase 3c) |
+| `--huge-pages` | default book with the pool and id index on 2 MiB-aligned `MADV_HUGEPAGE` storage (Phase 2d); prints the process's `AnonHugePages` at the end of replay. Takes effect only when THP is `madvise` or `always` |
 
 Storage variants are mutually exclusive and need `--no-strategy` (`--naive` excepted). Each one
 exists so that `perf stat` can measure a single variant in isolation.
 
 ### `bench_match [events=2000000] [active-levels=0] [market-trade-percent=0]`
-Runs 7 storage/level variants, 7 alternating runs each, and prints median (min–max) events/s,
+Runs 8 storage/level variants (the 7 above plus `32B huge`), 7 alternating runs each, and prints median (min–max) events/s,
 then latency percentiles for both timers. Event generation and the book-shape pass run outside
 timed regions. `active-levels > 0` switches to the controlled-depth generator; `market-trade-percent`
 (0–100) needs `active-levels > 0`. It exits with code 1 if any variant's checksum differs.

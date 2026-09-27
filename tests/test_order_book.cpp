@@ -1,7 +1,9 @@
+#include <cstdint>
 #include <vector>
 #include <limits>
 
 #include "lob/order_book.hpp"
+#include "lob/page_allocator.hpp"
 #include "lob/price_levels.hpp"
 #include "testing.hpp"
 
@@ -278,6 +280,33 @@ TEST(filled_order_id_can_be_reused) {
   CHECK(b.add(2, Side::Buy, OrderType::Market, 0, 2, 2, NullSink{}) == AddResult::Filled);
   CHECK(b.add(1, Side::Buy, OrderType::Limit, 99, 3, 3, NullSink{}) == AddResult::Rested);
   CHECK(b.contains(1) && b.order_count() == 1);
+}
+
+TEST(huge_page_allocator_is_aligned_and_value_initializes) {
+  std::vector<std::uint64_t, HugePageAllocator<std::uint64_t>> huge(1000);
+  CHECK(reinterpret_cast<std::uintptr_t>(huge.data()) % kHugePageBytes == 0);
+  huge[999] = 7;
+  CHECK(huge[999] == 7 && huge[0] == 0);
+  huge.resize(600'000);  // reallocation across several huge pages keeps contents
+  CHECK(huge[999] == 7 && huge[599'999] == 0);
+  CHECK(reinterpret_cast<std::uintptr_t>(huge.data()) % kHugePageBytes == 0);
+}
+
+TEST(huge_page_book_matches_default_book) {
+  OrderBook plain(1024);
+  HugePageOrderBook huge(1024);
+  for (OrderId id = 1; id <= 200; ++id) {
+    const Side side = id % 2 ? Side::Buy : Side::Sell;
+    const Price price = side == Side::Buy ? 100 - Price(id % 7) : 99 + Price(id % 5);
+    plain.add(id, side, OrderType::Limit, price, Qty(id % 9 + 1), id, NullSink{});
+    huge.add(id, side, OrderType::Limit, price, Qty(id % 9 + 1), id, NullSink{});
+    if (id % 3 == 0) {
+      plain.cancel(id - 1);
+      huge.cancel(id - 1);
+    }
+  }
+  CHECK(plain.checksum() == huge.checksum());
+  CHECK(plain.order_count() == huge.order_count());
 }
 
 TEST(prefault_pool_does_not_change_state) {

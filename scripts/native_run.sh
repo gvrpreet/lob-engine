@@ -4,8 +4,9 @@
 #   full      day 1 (~25 min): environment, check.sh, TSan, golden checksums, perf stat per
 #             storage variant, THP never vs always, both latency timers, every bench_match
 #             workload, scripts/bench.sh
-#   variance  days 2 and 3 (~8 min): environment, golden checksums, scripts/bench.sh and two
-#             bench_match workloads -- the Phase 4 cross-day variance check
+#   variance  days 2 and 3 (~8 min): environment, golden checksums, perf stat for order32 and
+#             hugepages on the 5M log, scripts/bench.sh and two bench_match workloads -- the
+#             Phase 4 cross-day variance check
 # env: CORE=2 (pinned core), QUICK=1 (small event counts, skips check/TSan: smoke test only)
 # Output: <root>/<date>_<time>_<mode>/ holding transcript.log (everything printed), NN-<step>.log
 # per step, env.txt, steps.tsv, golden.tsv, results.tsv, latency.tsv, perf.tsv and summary.md.
@@ -277,6 +278,7 @@ main() {
         perf_variant "$n" hotcold --hot-cold
         perf_variant "$n" dense --dense
         perf_variant "$n" sorted --sorted
+        perf_variant "$n" hugepages --huge-pages   # pool + index MADV_HUGEPAGE under THP=madvise
       done
       if sudo -n true 2>/dev/null; then
         local thp_orig
@@ -299,6 +301,10 @@ main() {
     bench "$EV1" 25 25
     bench "$EV1" 50 25
   else
+    if [ "$HAVE_PERF" = 1 ]; then  # daily counters for the default book and the phase 2(d) variant
+      perf_variant "$EV5" order32
+      perf_variant "$EV5" hugepages --huge-pages
+    fi
     bench "$EV1"
     bench "$EV1" 25 25
   fi

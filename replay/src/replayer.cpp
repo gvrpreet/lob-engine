@@ -2,11 +2,31 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <type_traits>
 
 namespace replay {
 
 namespace {
+
+// Whole-process AnonHugePages from /proc/self/smaps_rollup; 0 where unavailable.
+std::uint64_t anon_huge_kb() {
+  std::uint64_t kb = 0;
+#if defined(__linux__)
+  if (std::FILE* f = std::fopen("/proc/self/smaps_rollup", "r")) {
+    char line[256];
+    while (std::fgets(line, sizeof line, f)) {
+      unsigned long long value = 0;
+      if (std::sscanf(line, "AnonHugePages: %llu kB", &value) == 1) {
+        kb = value;
+        break;
+      }
+    }
+    std::fclose(f);
+  }
+#endif
+  return kb;
+}
 
 // One instantiation per book with a runtime timer switch: instantiating the loop once per timer
 // exhausted GCC's inlining budget and pushed map/index calls out of line in the unmeasured path.
@@ -60,6 +80,9 @@ ReplayStats replay_with_book(std::span<const Event> events, const ReplayConfig& 
     st.final_levels = book.level_count(lob::Side::Buy) + book.level_count(lob::Side::Sell);
   }
   st.checksum = book.checksum();
+  if constexpr (std::is_same_v<Book, lob::HugePageOrderBook>) {
+    st.anon_huge_kb = anon_huge_kb();  // read while the book is still alive
+  }
   return st;
 }
 
@@ -91,6 +114,10 @@ ReplayStats replay_dense(std::span<const Event> events, const ReplayConfig& cfg)
 
 ReplayStats replay_sorted(std::span<const Event> events, const ReplayConfig& cfg) {
   return replay_with_book<lob::SortedOrderBook>(events, cfg, nullptr);
+}
+
+ReplayStats replay_hugepages(std::span<const Event> events, const ReplayConfig& cfg) {
+  return replay_with_book<lob::HugePageOrderBook>(events, cfg, nullptr);
 }
 
 }  // namespace replay

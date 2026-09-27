@@ -57,6 +57,17 @@ TEST(hot_cold_order_storage_matches_aos_replay) {
   CHECK(aos.final_orders == hotcold.final_orders);
 }
 
+TEST(huge_page_storage_matches_default_replay) {
+  const auto ev = replay::generate_events(100'000, 41);
+  const auto base = replay::replay(ev);
+  const auto hp = replay::replay_hugepages(ev);
+  CHECK(base.checksum == hp.checksum);
+  CHECK(base.trades == hp.trades && base.volume == hp.volume);
+  CHECK(base.rejected == hp.rejected && base.cancel_misses == hp.cancel_misses);
+  CHECK(base.final_orders == hp.final_orders);
+  CHECK(base.anon_huge_kb == 0);  // only sampled by the huge-page variant
+}
+
 TEST(dense_price_levels_match_tree_replay) {
   const auto ev = replay::generate_events(150'000, 41);
   const auto tree = replay::replay(ev);

@@ -24,7 +24,8 @@ struct NullSink {
 //   price levels : TreePriceLevels     -> dense bitmap experiment available (phase 3b)
 //   id lookup    : FlatOrderIndex      -> open-addressing table (phase 3.1)
 //   order storage: OrderPool (slab)    -> already cache-aware (phase 2)
-template <class Pool, template <class> class LevelIndex = TreePriceLevels>
+template <class Pool, template <class> class LevelIndex = TreePriceLevels,
+          class IdIndex = FlatOrderIndex>
 class BasicOrderBook {
  public:
   using Bids = LevelIndex<std::greater<Price>>;
@@ -163,7 +164,7 @@ class BasicOrderBook {
   Pool pool_;
   Bids bids_;
   Asks asks_;
-  FlatOrderIndex index_;
+  IdIndex index_;
 };
 
 using OrderBook = BasicOrderBook<OrderPool>;
@@ -173,5 +174,8 @@ using OrderBook64 = BasicOrderBook<OrderPool64>;
 using HotColdOrderBook = BasicOrderBook<HotColdOrderPool>;
 using DenseOrderBook = BasicOrderBook<OrderPool, DensePriceLevels>;
 using SortedOrderBook = BasicOrderBook<OrderPool, SortedPriceLevels>;
+// Phase 2(d): default book with the pool and id index on MADV_HUGEPAGE storage.
+using HugePageOrderBook =
+    BasicOrderBook<HugePageOrderPool, TreePriceLevels, BasicFlatOrderIndex<HugePageAllocator>>;
 
 }  // namespace lob

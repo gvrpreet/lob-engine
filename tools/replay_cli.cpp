@@ -1,4 +1,4 @@
-// usage: replay_cli <events.bin> [--latency] [--tsc] [--naive] [--no-strategy] [--order-size 48|64] [--hot-cold] [--dense] [--sorted]
+// usage: replay_cli <events.bin> [--latency] [--tsc] [--huge-pages] [--naive] [--no-strategy] [--order-size 48|64] [--hot-cold] [--dense] [--sorted]
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -10,7 +10,7 @@
 int main(int argc, char** argv) {
   if (argc < 2) {
     std::fprintf(stderr,
-                 "usage: %s <events.bin> [--latency] [--tsc] [--naive] [--no-strategy] [--order-size 48|64] [--hot-cold] [--dense] [--sorted]\n",
+                 "usage: %s <events.bin> [--latency] [--tsc] [--huge-pages] [--naive] [--no-strategy] [--order-size 48|64] [--hot-cold] [--dense] [--sorted]\n",
            argv[0]);
     return 2;
   }
@@ -23,10 +23,12 @@ int main(int argc, char** argv) {
   bool hot_cold = false;
   bool dense = false;
   bool sorted = false;
+  bool huge = false;
   unsigned order_size = 32;
   for (int i = 2; i < argc; ++i) {
     if (std::strcmp(argv[i], "--latency") == 0) cfg.measure_latency = true;
     else if (std::strcmp(argv[i], "--tsc") == 0) cfg.latency_timer = replay::LatencyTimer::Tsc;
+    else if (std::strcmp(argv[i], "--huge-pages") == 0) huge = true;
     else if (std::strcmp(argv[i], "--naive") == 0) naive = true;
     else if (std::strcmp(argv[i], "--no-strategy") == 0) use_strategy = false;
     else if (std::strcmp(argv[i], "--hot-cold") == 0) hot_cold = true;
@@ -44,7 +46,8 @@ int main(int argc, char** argv) {
       return 2;
     }
   }
-  const int variants = int{naive} + int{hot_cold} + int{order_size != 32} + int{dense} + int{sorted};
+  const int variants =
+      int{naive} + int{hot_cold} + int{order_size != 32} + int{dense} + int{sorted} + int{huge};
   if (variants > 1 || (variants == 1 && !naive && use_strategy)) {
     std::fprintf(stderr, "storage variants are exclusive and require --no-strategy\n");
     return 2;
@@ -54,6 +57,7 @@ int main(int argc, char** argv) {
                         : hot_cold ? replay::replay_hotcold(ev, cfg)
                         : dense ? replay::replay_dense(ev, cfg)
                         : sorted ? replay::replay_sorted(ev, cfg)
+                        : huge ? replay::replay_hugepages(ev, cfg)
                         : order_size == 48 ? replay::replay_order48(ev, cfg)
                         : order_size == 64 ? replay::replay_order64(ev, cfg)
                                            : replay::replay(ev, cfg, use_strategy ? &vwap : nullptr);
@@ -70,6 +74,9 @@ int main(int argc, char** argv) {
   else
     std::printf("strategy      : disabled\n");
   std::printf("book checksum : %016llx\n", (unsigned long long)st.checksum);
+  if (huge)
+    std::printf("huge pages    : requested; process AnonHugePages %llu kB at end of replay\n",
+                (unsigned long long)st.anon_huge_kb);
   if (cfg.measure_latency) {
     std::printf("latency timer : %s (empty-interval p50 %llu ns, included below)\n",
                 replay::timer_name(cfg.latency_timer),
