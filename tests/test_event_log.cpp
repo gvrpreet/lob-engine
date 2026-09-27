@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "replay/event_log.hpp"
+#include "replay/mapped_event_log.hpp"
 #include "replay/replayer.hpp"
 #include "replay/synthetic.hpp"
 #include "testing.hpp"
@@ -33,15 +34,18 @@ void write_bytes(const std::string& path, const std::vector<char>& bytes) {
   std::ofstream(path, std::ios::binary).write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
 }
 
-// Writes `bytes` to a temp file and expects read_events to reject it with a reason.
+// Writes `bytes` to a temp file and expects both readers to reject it with a reason.
 bool rejected(const std::vector<char>& bytes) {
   const std::string path = temp_path("lob_bad_events.bin");
   write_bytes(path, bytes);
   std::vector<replay::Event> out(3);
-  std::string error;
-  const bool ok = replay::read_events(path, out, &error);
+  std::string read_error, map_error;
+  const bool read_ok = replay::read_events(path, out, &read_error);
+  replay::MappedEventLog mapped;
+  const bool map_ok = mapped.open(path, &map_error);
   std::remove(path.c_str());
-  return !ok && out.empty() && !error.empty();
+  return !read_ok && out.empty() && !read_error.empty() && !map_ok && !mapped.is_open() &&
+         mapped.events().empty() && map_error == read_error;
 }
 }  // namespace
 
@@ -115,5 +119,37 @@ TEST(read_events_accepts_empty_log) {
   CHECK(replay::write_events(path, {}));
   std::vector<replay::Event> out(3);
   CHECK(replay::read_events(path, out) && out.empty());
+  replay::MappedEventLog mapped;
+  CHECK(mapped.open(path) && mapped.is_open() && mapped.events().empty());
+  CHECK(replay::replay(mapped.events()).events == 0);
   std::remove(path.c_str());
+}
+
+TEST(mapped_log_matches_read_events_and_replays_golden) {
+  std::vector<replay::Event> copied;
+  CHECK(replay::read_events(kGolden, copied));
+  replay::MappedEventLog mapped;
+  std::string error;
+  CHECK(mapped.open(kGolden, &error));
+  const auto view = mapped.events();
+  CHECK(view.size() == copied.size());
+  CHECK(std::memcmp(view.data(), copied.data(), copied.size() * sizeof(replay::Event)) == 0);
+  CHECK(reinterpret_cast<std::uintptr_t>(view.data()) % alignof(replay::Event) == 0);
+  CHECK(replay::replay(view).checksum == kGoldenChecksum);
+}
+
+TEST(mapped_log_move_transfers_ownership) {
+  replay::MappedEventLog a;
+  CHECK(a.open(kGolden));
+  const replay::Event* first = a.events().data();
+  replay::MappedEventLog b(std::move(a));
+  CHECK(!a.is_open() && a.events().empty());  // NOLINT(bugprone-use-after-move): checking moved-from state
+  CHECK(b.is_open() && b.events().data() == first && b.events().size() == 2000);
+  replay::MappedEventLog c;
+  CHECK(c.open(kGolden));
+  c = std::move(b);  // releases c's own mapping, takes b's
+  CHECK(c.events().data() == first && !b.is_open());
+  CHECK(replay::replay(c.events()).checksum == kGoldenChecksum);
+  c.close();
+  CHECK(!c.is_open() && c.events().empty());
 }

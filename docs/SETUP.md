@@ -143,10 +143,12 @@ build/release/gen_events data/events_5000000.bin 5000000 42   # name used by scr
 ```
 
 ### `replay_cli <events.bin> [options]`
-Replays a log through the book and prints events, trades, rejects, cancel misses, throughput, VWAP, checksum.
+Replays a log through the book and prints the load time, events, trades, rejects, cancel misses, throughput, VWAP, checksum.
+The log is memory-mapped by default (zero-copy, validated). A malformed file is rejected with a one-line reason.
 
 | Option | Effect |
 |---|---|
+| `--read` | copy the log into a vector (the pre-`mmap` reader) instead of mapping it; `native_run.sh` uses it for `perf stat` so counters stay comparable across days |
 | `--latency` | per-event latency percentiles (p50/p90/p99/p99.9) from a log-bucket histogram, plus the timer's own overhead (included in every sample) |
 | `--tsc` | with `--latency`: use the calibrated `rdtscp` timer instead of `steady_clock` |
 | `--no-strategy` | disable the VWAP strategy hook (required for storage variants below) |

@@ -28,4 +28,9 @@ bool read_events(const std::string& path, std::vector<Event>& out, std::string* 
 // events.size() if all are valid.
 std::size_t first_invalid_event(std::span<const Event> events) noexcept;
 
+// Shared by both readers: checks the 16-byte header against the whole file's size and returns the
+// record count. `header` must point at the file's first kEventLogHeaderBytes bytes.
+bool check_event_log_header(const void* header, std::uint64_t file_bytes, std::uint64_t& count,
+                            std::string* error = nullptr);
+
 }  // namespace replay

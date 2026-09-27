@@ -35,8 +35,8 @@ target_include_directories(lob PUBLIC include)
 target_link_libraries(lob PUBLIC lob_flags)
 
 # ---- replay framework -----------------------------------------------------
-add_library(lob_replay replay/src/event_log.cpp replay/src/replayer.cpp replay/src/synthetic.cpp
-                       replay/src/timer.cpp)
+add_library(lob_replay replay/src/event_log.cpp replay/src/mapped_event_log.cpp
+                       replay/src/replayer.cpp replay/src/synthetic.cpp replay/src/timer.cpp)
 target_include_directories(lob_replay PUBLIC replay/include)
 target_link_libraries(lob_replay PUBLIC lob)
 

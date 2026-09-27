@@ -42,28 +42,37 @@ std::size_t first_invalid_event(std::span<const Event> events) noexcept {
   return events.size();
 }
 
+bool check_event_log_header(const void* header, std::uint64_t file_bytes, std::uint64_t& count,
+                            std::string* error) {
+  if (file_bytes < kEventLogHeaderBytes) return fail(error, "file shorter than the 16-byte header");
+  if (std::memcmp(header, kMagic, 8) != 0) return fail(error, "bad magic (expected LOBEVT01)");
+  std::uint64_t n = 0;
+  std::memcpy(&n, static_cast<const char*>(header) + 8, sizeof n);
+  const std::uint64_t payload = file_bytes - kEventLogHeaderBytes;
+  if (payload % sizeof(Event) != 0 || n != payload / sizeof(Event))
+    return fail(error, "header says " + std::to_string(n) + " records but the file holds " +
+                           std::to_string(payload) + " payload bytes (" +
+                           std::to_string(payload / sizeof(Event)) + " whole records)");
+  count = n;
+  return true;
+}
+
 bool read_events(const std::string& path, std::vector<Event>& out, std::string* error) {
   out.clear();
   File f(std::fopen(path.c_str(), "rb"));
   if (!f) return fail(error, "cannot open " + path);
 
-  char magic[8];
-  std::uint64_t n = 0;
-  if (std::fread(magic, 1, 8, f.get()) != 8 || std::fread(&n, sizeof n, 1, f.get()) != 1)
-    return fail(error, "file shorter than the 16-byte header");
-  if (std::memcmp(magic, kMagic, 8) != 0) return fail(error, "bad magic (expected LOBEVT01)");
-
   // Check the header count against the real size before allocating anything.
   if (std::fseek(f.get(), 0, SEEK_END) != 0) return fail(error, "cannot seek");
   const long end = std::ftell(f.get());
   if (end < 0) return fail(error, "cannot determine file size");
-  const auto payload = static_cast<std::uint64_t>(end) - kEventLogHeaderBytes;
-  if (payload % sizeof(Event) != 0 || n != payload / sizeof(Event))
-    return fail(error, "header says " + std::to_string(n) + " records but the file holds " +
-                           std::to_string(payload) + " payload bytes (" +
-                           std::to_string(payload / sizeof(Event)) + " whole records)");
-  if (std::fseek(f.get(), static_cast<long>(kEventLogHeaderBytes), SEEK_SET) != 0)
-    return fail(error, "cannot seek");
+  std::rewind(f.get());
+  char header[kEventLogHeaderBytes] = {};
+  if (std::fread(header, 1, sizeof header, f.get()) != sizeof header &&
+      static_cast<std::uint64_t>(end) >= kEventLogHeaderBytes)
+    return fail(error, "short read");  // a genuinely short file fails the size check below instead
+  std::uint64_t n = 0;
+  if (!check_event_log_header(header, static_cast<std::uint64_t>(end), n, error)) return false;
 
   out.resize(static_cast<std::size_t>(n));
   if (!out.empty() && std::fread(out.data(), sizeof(Event), out.size(), f.get()) != out.size()) {

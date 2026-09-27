@@ -4,8 +4,8 @@
 #   full      day 1 (~25 min): environment, check.sh, TSan, golden checksums, perf stat per
 #             storage variant, THP never vs always, both latency timers, every bench_match
 #             workload, scripts/bench.sh
-#   variance  days 2 and 3 (~8 min): environment, golden checksums, perf stat for order32 and
-#             hugepages on the 5M log, scripts/bench.sh and two bench_match workloads -- the
+#   variance  days 2 and 3 (~8 min): environment, golden checksums, perf stat for order32,
+#             hugepages and mmap on the 5M log, scripts/bench.sh and two bench_match workloads -- the
 #             Phase 4 cross-day variance check
 # env: CORE=2 (pinned core), QUICK=1 (small event counts, skips check/TSan: smoke test only)
 # Output: <root>/<date>_<time>_<mode>/ holding transcript.log (everything printed), NN-<step>.log
@@ -152,8 +152,12 @@ bench() {  # bench <bench_match args...>
 
 perf_variant() {  # perf_variant <events> <label> [replay_cli flags...]
   local n=$1 label=$2; shift 2
+  # Counters include the file load. Every variant loads with --read (as on native day 1) so they stay
+  # comparable across days; the "mmap" variant is the default book with the zero-copy mapped reader.
+  local reader=--read
+  [ "$label" = mmap ] && reader=
   step "perf_${n}_${label}" taskset -c "$CORE" perf stat -r 5 -e "$PERF_EVENTS" -- \
-    $BIN/replay_cli "data/events_$n.bin" --no-strategy "$@"
+    $BIN/replay_cli "data/events_$n.bin" --no-strategy $reader "$@"
   awk -v w="$n" -v v="$label" -v evs="$PERF_EVENTS" '
     BEGIN { k = split(evs, a, ","); for (i = 1; i <= k; i++) want[a[i]] = 1 }
     {
@@ -174,7 +178,7 @@ thp_mode() {  # thp_mode <never|always>: switch THP system-wide, then count dTLB
   echo "$1" | sudo -n tee /sys/kernel/mm/transparent_hugepage/enabled >/dev/null || return 1
   echo "thp enabled: $(cat /sys/kernel/mm/transparent_hugepage/enabled)"
   taskset -c "$CORE" perf stat -r 5 -e dTLB-loads,dTLB-load-misses,page-faults,cycles,instructions -- \
-    $BIN/replay_cli "data/events_$EV5.bin" --no-strategy
+    $BIN/replay_cli "data/events_$EV5.bin" --no-strategy --read
 }
 
 md_table() {  # md_table <tsv> <header cells...>: print a TSV file as a Markdown table
@@ -279,6 +283,7 @@ main() {
         perf_variant "$n" dense --dense
         perf_variant "$n" sorted --sorted
         perf_variant "$n" hugepages --huge-pages   # pool + index MADV_HUGEPAGE under THP=madvise
+        perf_variant "$n" mmap                     # default book, mmap reader instead of --read
       done
       if sudo -n true 2>/dev/null; then
         local thp_orig
@@ -304,6 +309,7 @@ main() {
     if [ "$HAVE_PERF" = 1 ]; then  # daily counters for the default book and the phase 2(d) variant
       perf_variant "$EV5" order32
       perf_variant "$EV5" hugepages --huge-pages
+      perf_variant "$EV5" mmap
     fi
     bench "$EV1"
     bench "$EV1" 25 25
