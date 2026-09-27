@@ -166,4 +166,6 @@ the default), similar room temperature, on AC, and an idle cool-down first.
 | THP steps skipped: "passwordless sudo unavailable" | Only happens outside the live session; run `sudo -v` first, or accept the skip |
 | Screen locked or laptop suspended mid-run | That run is invalid (see the step durations in `steps.tsv`). Fix the §4 power settings and rerun. |
 | Terminal closed mid-run | Partial logs stay on drive B; start a new run (new folder) |
+| TSan step: `FATAL: ThreadSanitizer: unexpected memory mapping` | Kernel ASLR entropy too high for GCC 13's TSan. The script already runs the tests under `setarch -R`; if it still fails, run `sudo sysctl vm.mmap_rnd_bits=28` and rerun |
+| Results drive has a different label (e.g. `MY PASSPORT`) | Use `"/media/ubuntu/<label>/<folder>"`, quoted, wherever this manual says `/media/ubuntu/LOBDATA` |
 | `!!! CHECKSUM MISMATCH` | Stop. Don't use the numbers; bring the folder back for investigation. |
