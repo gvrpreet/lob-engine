@@ -59,7 +59,9 @@ collect_env() {
   echo "host: $(hostname)"
   echo "kernel: $(uname -r)"
   echo "os: $(. /etc/os-release && echo "$PRETTY_NAME")"
-  echo "live_session: $(grep -q 'boot=casper' /proc/cmdline && echo yes || echo no)"
+  # 24.04 ISOs boot /casper/vmlinuz without boot=casper; the live medium is mounted at /cdrom
+  echo "live_session: $({ grep -Eq 'boot=casper|/casper/' /proc/cmdline || findmnt -rn /cdrom >/dev/null 2>&1; } && echo yes || echo no)"
+  echo "cmdline: $(cat /proc/cmdline)"
   echo "wsl: $(grep -qi microsoft /proc/sys/kernel/osrelease && echo yes || echo no)"
   echo "cpu: $(lscpu | sed -n 's/^Model name: *//p')"
   echo "threads: $(nproc) per_core=$(lscpu | sed -n 's/^Thread(s) per core: *//p') core${CORE}_siblings=$(sysval $cpu/cpu$CORE/topology/thread_siblings_list)"
@@ -255,7 +257,9 @@ main() {
 
   if [ "$MODE" = full ] && [ "$QUICK" != 1 ]; then
     step check scripts/check.sh
-    step tsan bash -c 'scripts/build.sh tsan && ctest --test-dir build/tsan --output-on-failure'
+    # setarch -R: GCC 13's TSan runtime aborts ("unexpected memory mapping") under the
+    # 32-bit mmap ASLR entropy of recent kernels; disabling randomization avoids it
+    step tsan bash -c 'scripts/build.sh tsan && setarch "$(uname -m)" -R ctest --test-dir build/tsan --output-on-failure'
   fi
 
   step gen_data gen_data
