@@ -52,6 +52,7 @@ endforeach()
 enable_testing()
 add_executable(lob_tests tests/test_main.cpp tests/test_order_book.cpp
                          tests/test_differential.cpp tests/test_replay.cpp
-                         tests/test_latency.cpp)
+                         tests/test_latency.cpp tests/test_event_log.cpp)
 target_link_libraries(lob_tests PRIVATE lob_replay)
+target_compile_definitions(lob_tests PRIVATE LOB_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
 add_test(NAME lob_tests COMMAND lob_tests)

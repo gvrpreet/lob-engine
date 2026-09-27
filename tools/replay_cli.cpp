@@ -15,7 +15,10 @@ int main(int argc, char** argv) {
     return 2;
   }
   std::vector<replay::Event> ev;
-  if (!replay::read_events(argv[1], ev)) { std::fprintf(stderr, "cannot read %s\n", argv[1]); return 1; }
+  if (std::string error; !replay::read_events(argv[1], ev, &error)) {
+    std::fprintf(stderr, "cannot read %s: %s\n", argv[1], error.c_str());
+    return 1;
+  }
 
   replay::ReplayConfig cfg;
   bool naive = false;
