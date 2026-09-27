@@ -1,4 +1,4 @@
-// usage: replay_cli <events.bin> [--latency] [--naive] [--no-strategy] [--order-size 48|64] [--hot-cold]
+// usage: replay_cli <events.bin> [--latency] [--tsc] [--naive] [--no-strategy] [--order-size 48|64] [--hot-cold]
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -10,7 +10,7 @@
 int main(int argc, char** argv) {
   if (argc < 2) {
     std::fprintf(stderr,
-                 "usage: %s <events.bin> [--latency] [--naive] [--no-strategy] [--order-size 48|64] [--hot-cold]\n",
+                 "usage: %s <events.bin> [--latency] [--tsc] [--naive] [--no-strategy] [--order-size 48|64] [--hot-cold]\n",
            argv[0]);
     return 2;
   }
@@ -24,6 +24,7 @@ int main(int argc, char** argv) {
   unsigned order_size = 32;
   for (int i = 2; i < argc; ++i) {
     if (std::strcmp(argv[i], "--latency") == 0) cfg.measure_latency = true;
+    else if (std::strcmp(argv[i], "--tsc") == 0) cfg.latency_timer = replay::LatencyTimer::Tsc;
     else if (std::strcmp(argv[i], "--naive") == 0) naive = true;
     else if (std::strcmp(argv[i], "--no-strategy") == 0) use_strategy = false;
     else if (std::strcmp(argv[i], "--hot-cold") == 0) hot_cold = true;
@@ -64,6 +65,9 @@ int main(int argc, char** argv) {
     std::printf("strategy      : disabled\n");
   std::printf("book checksum : %016llx\n", (unsigned long long)st.checksum);
   if (cfg.measure_latency) {
+    std::printf("latency timer : %s (empty-interval p50 %llu ns, included below)\n",
+                replay::timer_name(cfg.latency_timer),
+                (unsigned long long)replay::timer_overhead_ns(cfg.latency_timer));
     for (double p : {50.0, 90.0, 99.0, 99.9})
       std::printf("latency p%-5g : %llu ns\n", p, (unsigned long long)st.latency_percentile(p));
   }

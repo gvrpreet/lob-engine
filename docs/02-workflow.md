@@ -39,7 +39,7 @@ For controlled depths, run `build/release/bench_match 1000000 10`, then repeat w
 `bench_match` also reports final and peak active price-level counts from a separate untimed pass; include these in interpretation so structural comparisons are tied to actual book depth.
 5. ≥ 7 runs; report min / median / max, not just best. Big spread ⇒ noisy machine, fix that first.
 6. Report throughput **and** latency percentiles (p50/p90/p99/p99.9). Never report the mean latency alone.
-7. Know your timer: `steady_clock` costs ~20–30 ns/call, so per-event latency has a floor. Use `rdtscp` + calibration for sub-100 ns claims, or time batches.
+7. Know your timer: `steady_clock` costs ~20–30 ns/call, so per-event latency has a floor. `bench_match` and `replay_cli --latency` print the median empty-interval overhead, so record it with every percentile. `replay_cli --tsc` selects the calibrated `rdtscp` timer. Where the kernel clocksource is already `tsc` (check `/sys/devices/system/clocksource/clocksource0/current_clocksource`), it is no cheaper, and its `lfence` costs throughput. For sub-overhead resolution, time batches.
 8. Record: CPU model, cores/SMT, RAM speed, kernel, compiler + version, flags, commit hash, event count, seed.
 9. Check the checksum is identical across runs/commits so you know you measured the same work.
 10. Be aware of workload realism: the synthetic feed's book depth and cancel ratio strongly affect results. Say which workload you used. Later, validate against ITCH-derived data.

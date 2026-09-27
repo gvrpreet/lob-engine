@@ -5,6 +5,8 @@
 
 #include "lob/order_book.hpp"
 #include "replay/event.hpp"
+#include "replay/latency_histogram.hpp"
+#include "replay/timer.hpp"
 
 namespace replay {
 
@@ -18,7 +20,8 @@ class IStrategy {
 
 struct ReplayConfig {
   std::size_t book_capacity = 1u << 20;
-  bool measure_latency = false;  // per-event steady_clock timing (adds ~20-30ns overhead)
+  bool measure_latency = false;  // per-event timing; each sample includes the timer's overhead
+  LatencyTimer latency_timer = LatencyTimer::SteadyClock;  // Tsc: calibrated rdtscp
   bool measure_book_shape = false;  // collect final and peak active price-level counts
 };
 
@@ -28,10 +31,10 @@ struct ReplayStats {
   std::uint64_t final_levels = 0, peak_levels = 0;
   std::uint64_t checksum = 0;  // book state hash at end of replay
   double seconds = 0;
-  std::vector<std::uint32_t> latency_ns;  // filled only if measure_latency
+  LatencyHistogram latency;  // per-event ns, filled only if measure_latency
 
   double events_per_sec() const { return seconds > 0 ? static_cast<double>(events) / seconds : 0; }
-  std::uint64_t latency_percentile(double p) const;  // p in [0,100]
+  std::uint64_t latency_percentile(double p) const { return latency.percentile(p); }  // p in [0,100]
 };
 
 ReplayStats replay(std::span<const Event> events, const ReplayConfig& cfg = {},

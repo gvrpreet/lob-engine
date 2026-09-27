@@ -35,7 +35,8 @@ target_include_directories(lob PUBLIC include)
 target_link_libraries(lob PUBLIC lob_flags)
 
 # ---- replay framework -----------------------------------------------------
-add_library(lob_replay replay/src/event_log.cpp replay/src/replayer.cpp replay/src/synthetic.cpp)
+add_library(lob_replay replay/src/event_log.cpp replay/src/replayer.cpp replay/src/synthetic.cpp
+                       replay/src/timer.cpp)
 target_include_directories(lob_replay PUBLIC replay/include)
 target_link_libraries(lob_replay PUBLIC lob)
 
@@ -50,6 +51,7 @@ endforeach()
 # ---- tests ----------------------------------------------------------------
 enable_testing()
 add_executable(lob_tests tests/test_main.cpp tests/test_order_book.cpp
-                         tests/test_differential.cpp tests/test_replay.cpp)
+                         tests/test_differential.cpp tests/test_replay.cpp
+                         tests/test_latency.cpp)
 target_link_libraries(lob_tests PRIVATE lob_replay)
 add_test(NAME lob_tests COMMAND lob_tests)

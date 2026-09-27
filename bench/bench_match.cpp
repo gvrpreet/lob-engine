@@ -76,10 +76,22 @@ int main(int argc, char** argv) {
                 rates[index][3] / 1e6, rates[index].front() / 1e6, rates[index].back() / 1e6);
   }
 
-  replay::ReplayConfig lat;
-  lat.measure_latency = true;
-  const auto st = replay::replay(ev, lat);
-  std::printf("latency ns (incl. ~timer overhead): p50=%llu p90=%llu p99=%llu p99.9=%llu\n",
-              (unsigned long long)st.latency_percentile(50), (unsigned long long)st.latency_percentile(90),
-              (unsigned long long)st.latency_percentile(99), (unsigned long long)st.latency_percentile(99.9));
+  if (replay::tsc_available()) {
+    std::printf("tsc: %.4f ns/tick (%.3f GHz), invariant=%s\n", replay::tsc_ns_per_tick(),
+                1.0 / replay::tsc_ns_per_tick(), replay::tsc_invariant() ? "yes" : "no");
+  }
+  for (const auto timer : {replay::LatencyTimer::SteadyClock, replay::LatencyTimer::Tsc}) {
+    replay::ReplayConfig lat;
+    lat.measure_latency = true;
+    lat.latency_timer = timer;
+    const auto st = replay::replay(ev, lat);
+    if (st.checksum != checksums[0]) {
+      std::fprintf(stderr, "checksum mismatch in latency run\n");
+      return 1;
+    }
+    std::printf("latency ns %-12s (timer overhead p50=%llu, included): p50=%llu p90=%llu p99=%llu p99.9=%llu\n",
+                replay::timer_name(timer), (unsigned long long)replay::timer_overhead_ns(timer),
+                (unsigned long long)st.latency_percentile(50), (unsigned long long)st.latency_percentile(90),
+                (unsigned long long)st.latency_percentile(99), (unsigned long long)st.latency_percentile(99.9));
+  }
 }

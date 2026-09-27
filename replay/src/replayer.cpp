@@ -8,13 +8,17 @@ namespace replay {
 
 namespace {
 
+// One instantiation per book with a runtime timer switch: instantiating the loop once per timer
+// exhausted GCC's inlining budget and pushed map/index calls out of line in the unmeasured path.
 template <class Book>
 ReplayStats replay_with_book(std::span<const Event> events, const ReplayConfig& cfg,
                              IStrategy* strat) {
   using clock = std::chrono::steady_clock;
   Book book(cfg.book_capacity);
   ReplayStats st;
-  if (cfg.measure_latency) st.latency_ns.reserve(events.size());
+  const bool tsc = cfg.measure_latency && cfg.latency_timer == LatencyTimer::Tsc;
+  const double ns_per_tick = tsc ? TscTimer::ns_per_unit() : 1.0;
+  const auto read_timer = [tsc] { return tsc ? TscTimer::read() : SteadyTimer::read(); };
 
   const auto sink = [&](const lob::Trade& trade) {
     ++st.trades;
@@ -24,8 +28,8 @@ ReplayStats replay_with_book(std::span<const Event> events, const ReplayConfig& 
 
   const auto t0 = clock::now();
   for (const Event& event : events) {
-    clock::time_point start{};
-    if (cfg.measure_latency) start = clock::now();
+    std::uint64_t start = 0;
+    if (cfg.measure_latency) start = read_timer();
 
     if (event.type == EventType::New) {
       if (book.add(event.id, event.side, event.otype, event.price, event.qty, event.ts, sink) ==
@@ -41,8 +45,9 @@ ReplayStats replay_with_book(std::span<const Event> events, const ReplayConfig& 
     }
 
     if (cfg.measure_latency) {
-      st.latency_ns.push_back(static_cast<std::uint32_t>(
-          std::chrono::duration_cast<std::chrono::nanoseconds>(clock::now() - start).count()));
+      const std::uint64_t elapsed = read_timer() - start;
+      st.latency.record(tsc ? static_cast<std::uint64_t>(static_cast<double>(elapsed) * ns_per_tick)
+                            : elapsed);
     }
     if constexpr (std::is_same_v<Book, lob::OrderBook>) {
       if (strat) strat->on_event(event, book);
@@ -59,14 +64,6 @@ ReplayStats replay_with_book(std::span<const Event> events, const ReplayConfig& 
 }
 
 }  // namespace
-
-std::uint64_t ReplayStats::latency_percentile(double p) const {
-  if (latency_ns.empty()) return 0;
-  std::vector<std::uint32_t> v = latency_ns;
-  const auto k = static_cast<std::size_t>(p / 100.0 * static_cast<double>(v.size() - 1));
-  std::nth_element(v.begin(), v.begin() + static_cast<std::ptrdiff_t>(k), v.end());
-  return v[k];
-}
 
 ReplayStats replay(std::span<const Event> events, const ReplayConfig& cfg, IStrategy* strat) {
   return replay_with_book<lob::OrderBook>(events, cfg, strat);
