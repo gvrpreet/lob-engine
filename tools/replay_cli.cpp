@@ -1,4 +1,4 @@
-// usage: replay_cli <events.bin> [--latency] [--tsc] [--naive] [--no-strategy] [--order-size 48|64] [--hot-cold]
+// usage: replay_cli <events.bin> [--latency] [--tsc] [--naive] [--no-strategy] [--order-size 48|64] [--hot-cold] [--dense] [--sorted]
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -10,7 +10,7 @@
 int main(int argc, char** argv) {
   if (argc < 2) {
     std::fprintf(stderr,
-                 "usage: %s <events.bin> [--latency] [--tsc] [--naive] [--no-strategy] [--order-size 48|64] [--hot-cold]\n",
+                 "usage: %s <events.bin> [--latency] [--tsc] [--naive] [--no-strategy] [--order-size 48|64] [--hot-cold] [--dense] [--sorted]\n",
            argv[0]);
     return 2;
   }
@@ -21,6 +21,8 @@ int main(int argc, char** argv) {
   bool naive = false;
   bool use_strategy = true;
   bool hot_cold = false;
+  bool dense = false;
+  bool sorted = false;
   unsigned order_size = 32;
   for (int i = 2; i < argc; ++i) {
     if (std::strcmp(argv[i], "--latency") == 0) cfg.measure_latency = true;
@@ -28,6 +30,8 @@ int main(int argc, char** argv) {
     else if (std::strcmp(argv[i], "--naive") == 0) naive = true;
     else if (std::strcmp(argv[i], "--no-strategy") == 0) use_strategy = false;
     else if (std::strcmp(argv[i], "--hot-cold") == 0) hot_cold = true;
+    else if (std::strcmp(argv[i], "--dense") == 0) dense = true;
+    else if (std::strcmp(argv[i], "--sorted") == 0) sorted = true;
     else if (std::strcmp(argv[i], "--order-size") == 0 && i + 1 < argc) {
       order_size = static_cast<unsigned>(std::strtoul(argv[++i], nullptr, 10));
       if (order_size != 48 && order_size != 64) {
@@ -40,14 +44,16 @@ int main(int argc, char** argv) {
       return 2;
     }
   }
-  if ((naive && (order_size != 32 || hot_cold)) || (hot_cold && order_size != 32) ||
-      ((order_size != 32 || hot_cold) && use_strategy)) {
+  const int variants = int{naive} + int{hot_cold} + int{order_size != 32} + int{dense} + int{sorted};
+  if (variants > 1 || (variants == 1 && !naive && use_strategy)) {
     std::fprintf(stderr, "storage variants are exclusive and require --no-strategy\n");
     return 2;
   }
   replay::VwapTracker vwap;
   const auto st = naive ? replay::replay_naive(ev, cfg)
                         : hot_cold ? replay::replay_hotcold(ev, cfg)
+                        : dense ? replay::replay_dense(ev, cfg)
+                        : sorted ? replay::replay_sorted(ev, cfg)
                         : order_size == 48 ? replay::replay_order48(ev, cfg)
                         : order_size == 64 ? replay::replay_order64(ev, cfg)
                                            : replay::replay(ev, cfg, use_strategy ? &vwap : nullptr);

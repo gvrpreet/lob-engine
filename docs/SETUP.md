@@ -13,6 +13,7 @@ currently stands, `docs/last-task-completed.md`.
 | `02-workflow.md` | the 8-step change loop, definition of done, benchmark protocol |
 | `03-benchmark-log.md` | append-only measured results |
 | `last-task-completed.md` | current checkpoint, next task, native Linux checklist + WSL2 reference data |
+| `NATIVE-LIVE-USB.md` | step-by-step native run from a live USB on the same laptop, with automatic result logging |
 | `development-journey.md` | why decisions were made; what was deferred |
 | `learning/experiments/`, `learning/notes/` | per-experiment records and daily notes |
 
@@ -152,9 +153,11 @@ Replays a log through the book and prints events, trades, rejects, cancel misses
 | `--naive` | per-order `new/delete` storage (Phase 2a baseline) |
 | `--order-size 48\|64` | padded order records (Phase 2b) |
 | `--hot-cold` | hot/cold split storage (Phase 2c) |
+| `--dense` | dense price-band level store (Phase 3b) |
+| `--sorted` | sorted-vector level store (Phase 3c) |
 
-Storage variants are mutually exclusive and need `--no-strategy`. Dense and sorted level stores
-are only available through `bench_match`.
+Storage variants are mutually exclusive and need `--no-strategy` (`--naive` excepted). Each one
+exists so that `perf stat` can measure a single variant in isolation.
 
 ### `bench_match [events=2000000] [active-levels=0] [market-trade-percent=0]`
 Runs 7 storage/level variants, 7 alternating runs each, and prints median (min–max) events/s,
@@ -175,6 +178,9 @@ build/release/bench_match 1000000 25 25      # exactly 25 levels, 25% configured
 | `scripts/perf.sh stat [file]` | `perf stat`: cycles, instructions, branches/misses, cache refs/misses, L1d misses (native only) |
 | `scripts/perf.sh record [file]` | sampling profile with frame-pointer call graphs → `perf report` (native only) |
 | `scripts/perf.sh cache [file]` | Cachegrind on a separate non-native `build/cache` build (works everywhere, slow) |
+| `scripts/native_setup.sh` | native/live-USB session: installs toolchain + perf, sets perf permissions and governor/EPP (needs sudo) |
+| `scripts/native_run.sh [full\|variance] [dir]` | the whole native measurement set with automatic logging and `summary.md`; see `NATIVE-LIVE-USB.md` |
+| `scripts/native_compare.sh [dir]` | cross-run/cross-day spread of `bench_match` medians (Phase 4 < 5% check) |
 
 `perf.sh` defaults to `data/events_5000000.bin`. For per-function instruction counts:
 `valgrind --tool=cachegrind --cache-sim=no --cachegrind-out-file=cg.out build/cache/replay_cli <file> --no-strategy && cg_annotate cg.out`.

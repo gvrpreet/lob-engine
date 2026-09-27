@@ -23,7 +23,7 @@ lob-engine/
 ├── tools/                  gen_events (make a feed) · replay_cli (run + report)
 ├── bench/                  bench_match (throughput + latency percentiles)
 ├── tests/                  unit · differential (vs naive oracle) · replay determinism
-├── scripts/                build.sh · check.sh · bench.sh · perf.sh
+├── scripts/                build.sh · check.sh · bench.sh · perf.sh · native_{setup,run,compare}.sh
 ├── docs/
 │   ├── 00-roadmap.md         8-phase learning + implementation plan  <-- START HERE
 │   ├── 01-architecture.md    data model, invariants, event flow, design decisions
