@@ -2,7 +2,9 @@
 // For trustworthy numbers follow docs/02-workflow.md ("Benchmark protocol").
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <vector>
 
 #include "replay/replayer.hpp"
@@ -11,8 +13,14 @@
 int main(int argc, char** argv) {
   const std::size_t n = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : 2'000'000;
   const std::size_t active_levels = argc > 2 ? std::strtoull(argv[2], nullptr, 10) : 0;
+  const auto trade_percent = argc > 3 ? static_cast<std::uint32_t>(std::strtoul(argv[3], nullptr, 10)) : 0;
+  if (trade_percent > 100 || (trade_percent != 0 && active_levels == 0)) {
+    std::fprintf(stderr, "usage: bench_match [event-count] [active-level-count] [market-trade-percent]\n");
+    return 2;
+  }
   const auto ev = active_levels == 0 ? replay::generate_events(n)
-                                     : replay::generate_depth_events(n, active_levels);
+                                     : replay::generate_depth_events(n, active_levels, 42,
+                                                                     trade_percent);
 
   replay::ReplayConfig shape_config;
   shape_config.measure_book_shape = true;
@@ -58,8 +66,8 @@ int main(int argc, char** argv) {
   constexpr std::array<const char*, 7> labels{"Order 32B", "new/delete", "Order 48B",
                                                "Order 64B", "hot/cold", "dense levels",
                                                "sorted levels"};
-  std::printf("events=%zu requested_levels=%zu runs=7 checksum=%016llx trades=%llu final_levels=%llu peak_levels=%llu\n",
-              n, active_levels,
+  std::printf("events=%zu requested_levels=%zu trade_percent=%u runs=7 checksum=%016llx trades=%llu final_levels=%llu peak_levels=%llu\n",
+              n, active_levels, trade_percent,
               (unsigned long long)checksums[0], (unsigned long long)shape.trades,
               (unsigned long long)shape.final_levels,
               (unsigned long long)shape.peak_levels);

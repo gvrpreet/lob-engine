@@ -111,6 +111,25 @@ TEST(controlled_depth_events_hold_requested_level_count) {
   }
 }
 
+TEST(trade_enabled_controlled_depth_preserves_levels_across_backends) {
+  for (const std::size_t depth : {10, 25, 50}) {
+    const auto events = replay::generate_depth_events(50'000, depth, 59, 25);
+    const auto repeated = replay::generate_depth_events(50'000, depth, 59, 25);
+    CHECK(events.size() == repeated.size());
+    CHECK(std::memcmp(events.data(), repeated.data(), events.size() * sizeof(replay::Event)) == 0);
+
+    replay::ReplayConfig cfg;
+    cfg.measure_book_shape = true;
+    const auto tree = replay::replay(events, cfg);
+    const auto dense = replay::replay_dense(events, cfg);
+    const auto sorted = replay::replay_sorted(events, cfg);
+    CHECK(tree.trades > 0 && tree.trades == dense.trades && tree.trades == sorted.trades);
+    CHECK(tree.final_levels == depth && tree.peak_levels == depth);
+    CHECK(tree.final_levels == dense.final_levels && tree.final_levels == sorted.final_levels);
+    CHECK(tree.checksum == dense.checksum && tree.checksum == sorted.checksum);
+  }
+}
+
 TEST(event_log_roundtrip) {
   const auto ev = replay::generate_events(5'000, 11);
   const std::string path = "/tmp/lob_test_events.bin";

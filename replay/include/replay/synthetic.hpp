@@ -10,6 +10,7 @@ namespace replay {
 // ~10% market, ~20% cancel. Same (count, seed) => byte-identical output.
 std::vector<Event> generate_events(std::size_t count, std::uint64_t seed = 42);
 std::vector<Event> generate_depth_events(std::size_t count, std::size_t active_levels,
-										 std::uint64_t seed = 42);
+																				 std::uint64_t seed = 42,
+																				 std::uint32_t market_trade_percent = 0);
 
 }  // namespace replay

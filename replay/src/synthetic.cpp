@@ -1,6 +1,7 @@
 #include "replay/synthetic.hpp"
 
 #include <random>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -49,8 +50,9 @@ std::vector<Event> generate_events(std::size_t count, std::uint64_t seed) {
 }
 
 std::vector<Event> generate_depth_events(std::size_t count, std::size_t active_levels,
-                                         std::uint64_t seed) {
-  if (active_levels == 0 || count < active_levels) {
+                                         std::uint64_t seed,
+                                         std::uint32_t market_trade_percent) {
+  if (active_levels == 0 || count < active_levels || market_trade_percent > 100) {
     throw std::invalid_argument("event count must cover at least one anchor per level");
   }
 
@@ -79,7 +81,7 @@ std::vector<Event> generate_depth_events(std::size_t count, std::size_t active_l
     event.ts = ++timestamp;
     event.id = next_id++;
     event.price = price;
-    event.qty = 1;
+    event.qty = market_trade_percent == 0 ? 1 : std::numeric_limits<lob::Qty>::max();
     event.type = EventType::New;
     event.side = side;
     event.otype = lob::OrderType::Limit;
@@ -95,6 +97,12 @@ std::vector<Event> generate_depth_events(std::size_t count, std::size_t active_l
       event.id = live[index];
       live[index] = live.back();
       live.pop_back();
+    } else if (market_trade_percent != 0 && rng() % 100 < market_trade_percent) {
+      event.type = EventType::New;
+      event.id = next_id++;
+      event.qty = 1 + static_cast<lob::Qty>(rng() % 100);
+      event.side = (rng() & 1) ? lob::Side::Buy : lob::Side::Sell;
+      event.otype = lob::OrderType::Market;
     } else {
       const auto& [side, price] = levels[rng() % levels.size()];
       event.type = EventType::New;
