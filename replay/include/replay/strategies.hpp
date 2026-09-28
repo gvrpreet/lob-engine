@@ -1,5 +1,9 @@
 #pragma once
+#include <cstdint>
+#include <optional>
+
 #include "replay/replayer.hpp"
+#include "replay/trading.hpp"
 
 namespace replay {
 
@@ -18,6 +22,67 @@ class VwapTracker final : public IStrategy {
   double notional_ = 0;
   std::uint64_t volume_ = 0;
   lob::Price last_ = 0;
+};
+
+// Minimal market maker, used to exercise order entry and metrics (Phase 5f/g), not to make
+// money. It keeps one limit order per side at the touch (joining the best bid and best ask),
+// `size` shares each, and re-prices it with a Modify when the touch moves (losing queue
+// position). It stops quoting a side, cancelling its order, once the position reaches
+// `max_position` in that direction. It is deterministic: its decisions depend only on the book
+// and its own fills.
+class MarketMaker final : public ITradingStrategy {
+ public:
+  struct Params {
+    lob::Qty size = 10;
+    std::int64_t max_position = 200;
+    std::uint32_t requote_every = 1;  // re-check quotes every N feed events
+  };
+  MarketMaker() = default;
+  explicit MarketMaker(Params p) : p_(p) {}
+
+  void on_event(const Event&, const lob::OrderBook& book, OrderGateway& gw) override {
+    if (++events_ % p_.requote_every != 0) return;
+    quote(lob::Side::Buy, book.best_bid(), gw);
+    quote(lob::Side::Sell, book.best_ask(), gw);
+  }
+
+  void on_fill(const Fill& f, OrderGateway&) override {
+    const auto q = static_cast<std::int64_t>(f.qty);
+    position_ += f.side == lob::Side::Buy ? q : -q;
+    Slot& s = slot(f.side);
+    if (s.id == f.id && f.remaining == 0) s = {};  // gone: quote afresh on the next event
+  }
+
+  std::int64_t position() const noexcept { return position_; }
+
+ private:
+  struct Slot {
+    lob::OrderId id = 0;  // 0 = no order on this side
+    lob::Price price = 0;
+  };
+  Slot& slot(lob::Side side) { return side == lob::Side::Buy ? bid_ : ask_; }
+
+  void quote(lob::Side side, std::optional<lob::Price> touch, OrderGateway& gw) {
+    Slot& s = slot(side);
+    const bool allowed =
+        side == lob::Side::Buy ? position_ < p_.max_position : position_ > -p_.max_position;
+    if (!allowed || !touch) {
+      if (s.id != 0) gw.cancel(s.id);
+      s = {};
+      return;
+    }
+    if (s.id == 0) {
+      s = {gw.submit(side, lob::OrderType::Limit, *touch, p_.size), *touch};
+    } else if (s.price != *touch) {
+      gw.modify(s.id, *touch, p_.size);
+      s.price = *touch;
+    }
+  }
+
+  Params p_{};
+  std::uint64_t events_ = 0;
+  std::int64_t position_ = 0;
+  Slot bid_, ask_;
 };
 
 }  // namespace replay

@@ -1,4 +1,5 @@
 // usage: replay_cli <events.bin> [--read] [--latency] [--tsc] [--huge-pages] [--naive] [--no-strategy] [--order-size 48|64] [--hot-cold] [--dense] [--sorted]
+//        replay_cli <events.bin> [--read] --strategy mm [--order-latency <ns>]   (trading replay, default book)
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -11,12 +12,14 @@
 #include "replay/mapped_event_log.hpp"
 #include "replay/replayer.hpp"
 #include "replay/strategies.hpp"
+#include "replay/trading.hpp"
 
 int main(int argc, char** argv) {
   if (argc < 2) {
     std::fprintf(stderr,
-                 "usage: %s <events.bin> [--read] [--latency] [--tsc] [--huge-pages] [--naive] [--no-strategy] [--order-size 48|64] [--hot-cold] [--dense] [--sorted]\n",
-           argv[0]);
+                 "usage: %s <events.bin> [--read] [--latency] [--tsc] [--huge-pages] [--naive] [--no-strategy] [--order-size 48|64] [--hot-cold] [--dense] [--sorted]\n"
+                 "       %s <events.bin> [--read] --strategy mm [--order-latency <ns>]\n",
+           argv[0], argv[0]);
     return 2;
   }
   // Default: memory-map the log (zero-copy). --read copies it into a vector instead (the old path).
@@ -42,8 +45,22 @@ int main(int argc, char** argv) {
   bool sorted = false;
   bool huge = false;
   unsigned order_size = 32;
+  bool market_maker = false;
+  bool latency_given = false;
+  replay::TradingConfig trading;
   for (int i = 2; i < argc; ++i) {
     if (std::strcmp(argv[i], "--read") == 0) continue;  // handled above
+    else if (std::strcmp(argv[i], "--strategy") == 0 && i + 1 < argc) {
+      if (std::strcmp(argv[++i], "mm") != 0) {
+        std::fprintf(stderr, "--strategy supports: mm\n");
+        return 2;
+      }
+      market_maker = true;
+    }
+    else if (std::strcmp(argv[i], "--order-latency") == 0 && i + 1 < argc) {
+      trading.order_latency_ns = std::strtoull(argv[++i], nullptr, 10);
+      latency_given = true;
+    }
     else if (std::strcmp(argv[i], "--latency") == 0) cfg.measure_latency = true;
     else if (std::strcmp(argv[i], "--tsc") == 0) cfg.latency_timer = replay::LatencyTimer::Tsc;
     else if (std::strcmp(argv[i], "--huge-pages") == 0) huge = true;
@@ -66,6 +83,46 @@ int main(int argc, char** argv) {
   }
   const int variants =
       int{naive} + int{hot_cold} + int{order_size != 32} + int{dense} + int{sorted} + int{huge};
+  if (latency_given && !market_maker) {
+    std::fprintf(stderr, "--order-latency needs --strategy mm\n");
+    return 2;
+  }
+  if (market_maker) {
+    if (variants > 0 || !use_strategy || cfg.measure_latency) {
+      std::fprintf(stderr, "--strategy mm runs on the default book without --latency/--no-strategy\n");
+      return 2;
+    }
+    replay::MarketMaker mm;
+    const auto ts = replay::replay_trading(ev, trading, mm);
+    const auto& st = ts.replay;
+    const auto& m = ts.strategy;
+    std::printf("load          : %.1f ms (%s, validated)\n", load_ms, copy_read ? "read into vector" : "mmap");
+    std::printf("events        : %llu\n", (unsigned long long)st.events);
+    std::printf("trades        : %llu (volume %llu)\n", (unsigned long long)st.trades,
+                (unsigned long long)st.volume);
+    std::printf("rejected      : %llu   cancel misses: %llu   resting at end: %llu\n",
+                (unsigned long long)st.rejected, (unsigned long long)st.cancel_misses,
+                (unsigned long long)st.final_orders);
+    std::printf("amend misses  : modify %llu   reduce %llu\n", (unsigned long long)st.modify_misses,
+                (unsigned long long)st.reduce_misses);
+    std::printf("throughput    : %.2f M events/s (%.3f s)\n", st.events_per_sec() / 1e6, st.seconds);
+    std::printf("strategy      : market maker, order latency %llu ns\n",
+                (unsigned long long)trading.order_latency_ns);
+    std::printf("mm orders     : %llu submitted, %llu modifies, %llu cancels, %llu rejected, %llu misses, %llu in flight at end\n",
+                (unsigned long long)m.orders, (unsigned long long)m.modifies,
+                (unsigned long long)m.cancels, (unsigned long long)m.rejected,
+                (unsigned long long)m.misses, (unsigned long long)m.dropped);
+    std::printf("mm fills      : %llu (%llu aggressive), %llu of %llu shares, fill rate %.4f\n",
+                (unsigned long long)m.fills, (unsigned long long)m.aggressive_fills,
+                (unsigned long long)m.filled_qty, (unsigned long long)m.submitted_qty, m.fill_rate());
+    std::printf("mm position   : %lld   cash %lld ticks\n", (long long)m.position, (long long)m.cash);
+    std::printf("mm pnl        : realised %.1f   marked %.1f (mark %.1f) ticks x shares\n",
+                m.realised_pnl, m.marked_pnl, m.mark_price);
+    std::printf("mm slippage   : %.4f ticks/share over %llu shares (vs mid at send; + = cost)\n",
+                m.avg_slippage(), (unsigned long long)m.slippage_qty);
+    std::printf("book checksum : %016llx\n", (unsigned long long)st.checksum);
+    return 0;
+  }
   if (variants > 1 || (variants == 1 && !naive && use_strategy)) {
     std::fprintf(stderr, "storage variants are exclusive and require --no-strategy\n");
     return 2;
