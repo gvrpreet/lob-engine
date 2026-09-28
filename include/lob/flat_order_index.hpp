@@ -1,6 +1,8 @@
 #pragma once
 
+#include <bit>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -16,7 +18,9 @@ namespace lob {
 template <template <class> class Alloc = std::allocator>
 class BasicFlatOrderIndex {
  public:
-  explicit BasicFlatOrderIndex(std::size_t max_entries) : slots_(table_size_for(max_entries)) {}
+  explicit BasicFlatOrderIndex(std::size_t max_entries)
+      : slots_(table_size_for(max_entries)),
+        shift_(64 - static_cast<unsigned>(std::countr_zero(slots_.size()))) {}
 
   std::size_t size() const noexcept { return size_; }
 
@@ -31,7 +35,7 @@ class BasicFlatOrderIndex {
 
   bool insert(OrderId id, Handle handle) noexcept {
     const std::size_t mask = slots_.size() - 1;
-    std::size_t slot = hash(id) & mask;
+    std::size_t slot = home(id);
     for (std::size_t probes = 0; probes < slots_.size(); ++probes) {
       Entry& entry = slots_[slot];
       if (entry.handle == kInvalid) {
@@ -53,8 +57,8 @@ class BasicFlatOrderIndex {
     const std::size_t mask = slots_.size() - 1;
     std::size_t current = (hole + 1) & mask;
     while (slots_[current].handle != kInvalid) {
-      const std::size_t home = hash(slots_[current].id) & mask;
-      if (((current - home) & mask) >= ((current - hole) & mask)) {
+      const std::size_t wanted = home(slots_[current].id);
+      if (((current - wanted) & mask) >= ((current - hole) & mask)) {
         slots_[hole] = slots_[current];
         hole = current;
       }
@@ -84,11 +88,32 @@ class BasicFlatOrderIndex {
     return table_size;
   }
 
-  static std::size_t hash(OrderId id) noexcept { return std::hash<OrderId>{}(id); }
+  // Home slot. Blocks of 2^6 = 64 consecutive ids (1 KB of entries) stay together, and the
+  // blocks are scattered by Fibonacci hashing (multiply by 2^64/phi, keep the top bits).
+  // It was std::hash<OrderId>, which libstdc++ implements as the identity. Sequential ids plus
+  // linear probing then formed long primary clusters once ids had wrapped the table a few times
+  // with old orders still resting, and replay collapsed from 15.5M ev/s at 10M events to 0.41M
+  // at 15M. Scattering every id fixes that but loses the identity hash's locality for recent
+  // ids (-43% at 1M). 64-id blocks keep most of it and are fastest from 10M to 50M events.
+  // See docs/learning/experiments/2026-09-28-index-hash-clustering.md.
+#if !defined(LOB_INDEX_BLOCK_BITS)
+#define LOB_INDEX_BLOCK_BITS 6  // experiment knob: 2^bits consecutive ids stay together
+#endif
+  std::size_t home(OrderId id) const noexcept {
+    constexpr unsigned kBits = LOB_INDEX_BLOCK_BITS;
+    if constexpr (kBits > 0) {
+      if (shift_ + kBits < 64) {  // the table has more than one block
+        const std::size_t block = static_cast<std::size_t>(
+            ((id >> kBits) * 0x9E3779B97F4A7C15ULL) >> (shift_ + kBits));
+        return (block << kBits) | static_cast<std::size_t>(id & ((OrderId{1} << kBits) - 1));
+      }
+    }
+    return static_cast<std::size_t>((id * 0x9E3779B97F4A7C15ULL) >> shift_);
+  }
 
   std::size_t find_slot(OrderId id) const noexcept {
     const std::size_t mask = slots_.size() - 1;
-    std::size_t slot = hash(id) & mask;
+    std::size_t slot = home(id);
     for (std::size_t probes = 0; probes < slots_.size(); ++probes) {
       const Entry& entry = slots_[slot];
       if (entry.handle == kInvalid) return kNotFound;
@@ -99,6 +124,7 @@ class BasicFlatOrderIndex {
   }
 
   std::vector<Entry, Alloc<Entry>> slots_;
+  unsigned shift_;  // 64 - log2(table size); the table size is a power of two >= 2
   std::size_t size_ = 0;
 };
 

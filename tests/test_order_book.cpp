@@ -100,19 +100,45 @@ TEST(rejects_duplicate_id_and_zero_qty) {
 }
 
 TEST(flat_order_index_shifts_wrapped_collision_cluster_on_erase) {
+  // A table of 8 slots (capacity 7). Pick four ids whose home is the last slot (same
+  // Fibonacci hash as the index: top 3 bits of id * 2^64/phi), so the cluster wraps to slot 0.
+  std::vector<OrderId> ids;
+  for (OrderId id = 1; ids.size() < 4; ++id)
+    if (((id * 0x9E3779B97F4A7C15ULL) >> 61) == 7) ids.push_back(id);
   FlatOrderIndex index(7);
-  CHECK(index.insert(6, 1));
-  CHECK(index.insert(14, 2));
-  CHECK(index.insert(22, 3));
-  CHECK(index.erase(14));
+  CHECK(index.insert(ids[0], 1));
+  CHECK(index.insert(ids[1], 2));  // wraps to slot 0
+  CHECK(index.insert(ids[2], 3));  // slot 1
+  CHECK(index.erase(ids[1]));      // backward shift must move ids[2] into the hole
 
   Handle handle = kInvalid;
-  CHECK(index.find(6, handle) && handle == 1);
-  CHECK(index.find(22, handle) && handle == 3);
-  CHECK(!index.contains(14));
-  CHECK(index.insert(30, 4));
-  CHECK(index.find(30, handle) && handle == 4);
+  CHECK(index.find(ids[0], handle) && handle == 1);
+  CHECK(index.find(ids[2], handle) && handle == 3);
+  CHECK(!index.contains(ids[1]));
+  CHECK(index.insert(ids[3], 4));
+  CHECK(index.find(ids[3], handle) && handle == 4);
   CHECK(index.size() == 3);
+}
+
+TEST(flat_order_index_stays_fast_with_sequential_ids) {
+  // Regression for the identity-hash clustering: churn sequential ids through a half-full table
+  // for many wraps and check that probe runs stay short (the whole test must stay quick).
+  FlatOrderIndex index(1u << 12);  // 8192 slots
+  std::vector<OrderId> live;
+  OrderId next = 1;
+  for (int i = 0; i < 400'000; ++i) {
+    if (live.size() < 3000 || i % 2 == 0) {  // then alternate: about 3000 live (37% load)
+      CHECK(index.insert(next, static_cast<Handle>(next % 4096)));
+      live.push_back(next++);
+    } else {
+      const std::size_t k = static_cast<std::size_t>(next * 7919 % live.size());
+      CHECK(index.erase(live[k]));
+      live[k] = live.back();
+      live.pop_back();
+    }
+  }
+  for (const OrderId id : live) CHECK(index.contains(id));
+  CHECK(index.size() == live.size());
 }
 
 TEST(dense_price_levels_order_central_and_overflow_prices) {
