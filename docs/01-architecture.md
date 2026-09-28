@@ -95,7 +95,7 @@ events.bin ─► apply due gateway actions ─► apply feed event ─► deliv
 | Integer ticks | exact, comparable, no FP error | never |
 | 32-bit handles, not pointers | half the link size, slab locality | pool > 4B orders |
 | Intrusive doubly-linked FIFO | O(1) cancel & pop-front, no alloc | queue positions need random access |
-| `std::map` levels (baseline) | simple & correct first | Phase 3 → ladder + bitmap. Dense (band anchored on the first price) now wins by 14–22% on real ITCH flow in cents; switching the default is an open decision |
+| `std::map` levels (baseline) | simple & correct first | Phase 3 → ladder + bitmap. Dense (band anchored on the first price) now wins by 14–22% on real ITCH flow in cents. Decision (2026-09-28): the tree stays default until a re-centring band has been measured; then dense becomes default |
 | `unordered_map` index (baseline) | simple & correct first | Phase 3 → flat table |
 | Fixed-capacity pool | no allocation/latency spikes | grow-by-chunk if needed |
 | Single-threaded engine | no locks; determinism | scale by symbol sharding, not by threads per book |
