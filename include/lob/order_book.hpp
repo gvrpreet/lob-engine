@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <string>
+#include <vector>
 
 #include "lob/flat_order_index.hpp"
 #include "lob/order.hpp"
@@ -128,6 +130,75 @@ class BasicOrderBook {
     }
     const PriceLevel* level = asks_.find(p);
     return level == nullptr ? 0 : level->total_qty;
+  }
+
+  // Checks the state invariants of docs/01-architecture.md §4 (Phase 7). O(orders + levels);
+  // for tests, debug checks and the fuzzer, never the hot path. Returns false and, if given,
+  // sets `why` to the first violation found.
+  bool validate(std::string* why = nullptr) const {
+    std::string error;
+    std::vector<bool> seen(pool_.capacity(), false);
+    std::size_t orders = 0;
+    const auto check_side = [&](const auto& book, Side side) {
+      std::size_t levels = 0;
+      bool have_prev = false;
+      Price prev_price = 0;
+      book.for_each_sorted([&](Price price, const PriceLevel& level) {
+        if (!error.empty()) return;
+        const std::string at = std::string(side == Side::Buy ? "bid" : "ask") + " level " +
+                               std::to_string(price) + ": ";
+        ++levels;
+        if (have_prev && (side == Side::Buy ? price >= prev_price : price <= prev_price)) {
+          error = at + "levels out of price priority order";
+          return;
+        }
+        have_prev = true;
+        prev_price = price;
+        if (level.empty()) {
+          error = at + "empty level still stored";  // invariant 3
+          return;
+        }
+        std::uint64_t total = 0;
+        std::uint32_t count = 0;
+        Handle prev = kInvalid;
+        for (Handle h = level.head; h != kInvalid; h = pool_.next(h)) {
+          if (h >= seen.size() || seen[h]) {
+            error = at + "order handle " + std::to_string(h) + " repeated or out of range";
+            return;  // invariant 1 (also stops cycles)
+          }
+          seen[h] = true;
+          Handle indexed = kInvalid;
+          if (pool_.prev(h) != prev) error = at + "broken prev link";
+          else if (pool_.price(h) != price || pool_.side(h) != side) error = at + "order on wrong level";
+          else if (pool_.qty(h) == 0) error = at + "zero-quantity order resting";
+          else if (!index_.find(pool_.id(h), indexed) || indexed != h)
+            error = at + "order " + std::to_string(pool_.id(h)) + " missing from the id index";
+          if (!error.empty()) return;
+          total += pool_.qty(h);
+          ++count;
+          prev = h;
+        }
+        if (level.tail != prev) error = at + "tail does not end the list";
+        else if (static_cast<Qty>(total) != level.total_qty || count != level.count)
+          error = at + "total_qty/count disagree with the list";  // invariant 3
+        orders += count;
+      });
+      if (error.empty() && levels != book.size()) error = "level count disagrees with the store";
+    };
+    check_side(bids_, Side::Buy);
+    if (error.empty()) check_side(asks_, Side::Sell);
+    if (error.empty() && orders != index_.size())
+      error = "levels hold " + std::to_string(orders) + " orders, the id index " +
+              std::to_string(index_.size());  // invariant 1
+    if (error.empty() && pool_.live() != orders)
+      error = "pool has " + std::to_string(pool_.live()) + " live orders, levels hold " +
+              std::to_string(orders);  // invariant 6
+    const auto bid = best_bid();
+    const auto ask = best_ask();
+    if (error.empty() && bid && ask && *bid >= *ask) error = "book is crossed";  // invariant 2
+    if (error.empty()) return true;
+    if (why) *why = error;
+    return false;
   }
 
   // Order-sensitive hash of the entire book state. Used to prove that two

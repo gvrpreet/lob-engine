@@ -1,6 +1,8 @@
 // Differential test: optimised engine vs. naive oracle on random operation streams.
 // THIS is the safety net that lets you optimise aggressively in phases 2-6.
+#include <cstdio>
 #include <random>
+#include <string>
 #include <vector>
 
 #include "lob/order_book.hpp"
@@ -53,6 +55,9 @@ static void run_differential(std::uint64_t seed, int ops, Price price_base = 90,
       ids.push_back(id);
     }
     if (i % 512 == 0) {
+      std::string why;
+      CHECK(book.validate(&why));
+      if (!why.empty()) std::fprintf(stderr, "  validate at op %d: %s\n", i, why.c_str());
       CHECK(book.order_count() == ref.size());
       CHECK(book.best_bid() == ref.best(Side::Buy));
       CHECK(book.best_ask() == ref.best(Side::Sell));
@@ -101,7 +106,7 @@ static void run_drift_vs_tree(std::uint64_t seed, int ops) {
       ids.push_back(id);
     }
     CHECK(a == b);
-    if (i % 256 == 0) CHECK(tree.checksum() == other.checksum());
+    if (i % 256 == 0) CHECK(tree.checksum() == other.checksum() && tree.validate() && other.validate());
   }
   CHECK(tree.checksum() == other.checksum() && tree.order_count() == other.order_count());
 }

@@ -13,6 +13,7 @@ endif()
 option(LOB_ASAN   "AddressSanitizer + UBSan" OFF)
 option(LOB_TSAN   "ThreadSanitizer"          OFF)
 option(LOB_NATIVE "-march=native (benchmarks only; not portable)" OFF)
+option(LOB_FUZZ   "libFuzzer harness tests/fuzz_book.cpp (clang only)" OFF)
 
 add_library(lob_flags INTERFACE)
 target_compile_options(lob_flags INTERFACE -Wall -Wextra -Wpedantic -Wconversion -Wshadow
@@ -60,3 +61,12 @@ add_executable(lob_tests tests/test_main.cpp tests/test_order_book.cpp
 target_link_libraries(lob_tests PRIVATE lob_replay)
 target_compile_definitions(lob_tests PRIVATE LOB_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
 add_test(NAME lob_tests COMMAND lob_tests)
+
+# ---- fuzzing (Phase 7) ----------------------------------------------------
+if(LOB_FUZZ)
+  add_executable(fuzz_book tests/fuzz_book.cpp)
+  target_include_directories(fuzz_book PRIVATE tests)
+  target_link_libraries(fuzz_book PRIVATE lob)
+  target_compile_options(fuzz_book PRIVATE -fsanitize=fuzzer,address,undefined -fno-sanitize-recover=all)
+  target_link_options(fuzz_book PRIVATE -fsanitize=fuzzer,address,undefined)
+endif()

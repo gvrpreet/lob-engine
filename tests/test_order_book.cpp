@@ -1,6 +1,8 @@
 #include <cstdint>
-#include <vector>
+#include <cstdio>
 #include <limits>
+#include <string>
+#include <vector>
 
 #include "lob/order_book.hpp"
 #include "lob/page_allocator.hpp"
@@ -475,6 +477,31 @@ TEST(modify_and_reduce_match_across_variants) {
   CHECK(run(dense) == expected);
   CHECK(run(sorted) == expected);
   CHECK(run(hotcold) == expected);
+}
+
+TEST(validate_holds_through_every_operation_kind) {
+  OrderBook b(16); Collector c;
+  std::string why;
+  CHECK(b.validate(&why) && why.empty());  // empty book
+  b.add(1, Side::Buy, OrderType::Limit, 100, 10, 1, c);
+  b.add(2, Side::Buy, OrderType::Limit, 100, 5, 2, c);
+  b.add(3, Side::Buy, OrderType::Limit, 99, 7, 3, c);
+  b.add(4, Side::Sell, OrderType::Limit, 102, 8, 4, c);
+  b.add(5, Side::Sell, OrderType::Limit, 101, std::numeric_limits<Qty>::max() - 1, 5, c);
+  CHECK(b.validate(&why));
+  b.add(6, Side::Sell, OrderType::Limit, 100, 12, 6, c);   // partial fills on the bid side
+  b.reduce(2, 1);
+  b.modify(3, 98, 7, 7, c);                                 // re-queue at a new price
+  b.modify(4, 102, 3, 8, c);                                // amend in place
+  b.cancel(5);
+  b.add(7, Side::Buy, OrderType::Market, 0, 100, 9, c);
+  CHECK(b.validate(&why));
+  if (!why.empty()) std::fprintf(stderr, "  %s\n", why.c_str());
+  for (OrderId id = 1; id <= 7; ++id) b.cancel(id);
+  CHECK(b.validate(&why) && b.order_count() == 0);
+  TreeOrderBook t(4);
+  t.add(1, Side::Buy, OrderType::Limit, 100, 1, 1, c);
+  CHECK(t.validate());
 }
 
 TEST(huge_page_allocator_is_aligned_and_value_initializes) {
