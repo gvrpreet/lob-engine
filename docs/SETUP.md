@@ -155,7 +155,7 @@ The log is memory-mapped by default (zero-copy, validated). A malformed file is 
 | `--naive` | per-order `new/delete` storage (Phase 2a baseline) |
 | `--order-size 48\|64` | padded order records (Phase 2b) |
 | `--hot-cold` | hot/cold split storage (Phase 2c) |
-| `--dense` | dense price-band level store (Phase 3b) |
+| `--tree` | `std::map` level store. Dense levels (a re-centring bitmap band) are the default since 2026-09-28; `--dense` is no longer accepted |
 | `--sorted` | sorted-vector level store (Phase 3c) |
 | `--huge-pages` | default book with the pool and id index on 2 MiB-aligned `MADV_HUGEPAGE` storage (Phase 2d); prints the process's `AnonHugePages` at the end of replay. Takes effect only when THP is `madvise` or `always` |
 

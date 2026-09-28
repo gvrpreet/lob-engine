@@ -99,7 +99,7 @@ events.bin ─► apply due gateway actions ─► apply feed event ─► deliv
 | Integer ticks | exact, comparable, no FP error | never |
 | 32-bit handles, not pointers | half the link size, slab locality | pool > 4B orders |
 | Intrusive doubly-linked FIFO | O(1) cancel & pop-front, no alloc | queue positions need random access |
-| `std::map` levels (baseline) | simple & correct first | Phase 3 → ladder + bitmap. Dense (band anchored on the first price) now wins by 14–22% on real ITCH flow in cents. Decision (2026-09-28): the tree stays default until a re-centring band has been measured; then dense becomes default |
+| Dense levels: a re-centring 2,001-tick bitmap band plus an overflow `std::map`; default since 2026-09-28 (was `std::map` levels) | +14–27% over the tree on real ITCH flow (fewer mispredicts, no tree descent). The band re-centres when the touch leaves it | Tick size changes (the band assumes the instrument's real tick); very wide books; a summary bitmap if best-price scans show up. `TreeOrderBook` / `--tree` keep the old store |
 | `unordered_map` index (baseline) | simple & correct first | Phase 3 → flat table. Since 2026-09-28 its home slot keeps blocks of 64 sequential ids together and Fibonacci-scatters the blocks. The identity hash collapsed after about 10M events (linear-probing clusters) |
 | Fixed-capacity pool | no allocation/latency spikes | grow-by-chunk if needed |
 | Single-threaded engine | no locks; determinism | scale by symbol sharding, not by threads per book |
