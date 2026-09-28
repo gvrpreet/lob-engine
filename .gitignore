@@ -1,5 +1,7 @@
 build/
 data/*.bin
+data/itch/
+*.NASDAQ_ITCH50*
 data/perf.data*
 compile_commands.json
 .cache/
