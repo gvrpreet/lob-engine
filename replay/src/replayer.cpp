@@ -1,5 +1,7 @@
 #include "replay/replayer.hpp"
 
+#include "amend.hpp"
+
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
@@ -40,6 +42,7 @@ ReplayStats replay_with_book(std::span<const Event> events, const ReplayConfig& 
   const double ns_per_tick = tsc ? TscTimer::ns_per_unit() : 1.0;
   const auto read_timer = [tsc] { return tsc ? TscTimer::read() : SteadyTimer::read(); };
 
+  // Keep this a local lambda (internal linkage), so add<sink> stays inlinable; see amend.hpp.
   const auto sink = [&](const lob::Trade& trade) {
     ++st.trades;
     st.volume += trade.qty;
@@ -60,14 +63,9 @@ ReplayStats replay_with_book(std::span<const Event> events, const ReplayConfig& 
       case EventType::Cancel:
         if (!book.cancel(event.id)) ++st.cancel_misses;
         break;
-      case EventType::Modify: {
-        const auto r = book.modify(event.id, event.price, event.qty, event.ts, sink);
-        if (r == lob::ModifyResult::NotFound) ++st.modify_misses;
-        else if (r == lob::ModifyResult::Rejected) ++st.rejected;
-        break;
-      }
+      case EventType::Modify:
       case EventType::Reduce:
-        if (!book.reduce(event.id, event.qty)) ++st.reduce_misses;
+        detail::apply_amend(book, event, st, strat);  // separate TU: see amend.hpp
         break;
     }
 
