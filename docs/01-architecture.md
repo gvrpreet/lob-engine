@@ -49,7 +49,10 @@ events.bin ─► apply due gateway actions ─► apply feed event ─► deliv
   - PnL and slippage: realised PnL (average cost), marked PnL (final mid), and slippage against the mid when the order was sent (positive = cost).
 - **Determinism:** same log + strategy + latency ⇒ bit-identical metrics and checksum. A strategy that sends nothing reproduces `replay()` exactly.
 
-### Event log file format (v1 `LOBEVT01`, v2 `LOBEVT02`)
+### Event log file format (v1 `LOBEVT01`, v2 `LOBEVT02`, v3 `LOBEVT03`)
+
+v3 (2026-09-28) adds `type` 4 = **Execute**: the same book effect as Reduce (`id`, `qty` = executed shares), but it marks shares traded by an aggressor the feed does not show (ITCH E/C). The trading replay uses it for queue-position fills (below). Readers accept 01/02/03 and allow types up to 1/3/4 respectively. The writer picks the lowest version that fits.
+
 | Offset | Size | Field |
 |---|---|---|
 | 0 | 8 | magic `LOBEVT01` or `LOBEVT02` (the last two characters are the version) |
@@ -76,7 +79,7 @@ events.bin ─► apply due gateway actions ─► apply feed event ─► deliv
   - A/F become New. E/C (executions) and X (partial cancels) become Reduce. D becomes Cancel.
   - An ITCH replace U always loses priority. It becomes a Modify when the engine would also re-queue (new price or more shares), and Cancel + New with the same id otherwise.
   - Prices are ITCH units (1/10000 $) by default. `--tick 100` writes cents: any price that isn't a whole cent fails the conversion, unless `--drop-off-grid` drops those orders (counted). Real sub-dollar orders can be sub-penny. Timestamps are ns since midnight.
-  - Consequence for strategies: real aggressors never reach the engine, so a strategy's resting order is filled only when a displayed Add crosses it. There is no queue-position model yet (see the Phase 5(d) note).
+  - E/C become **Execute** (v3), not Reduce. The trading replay's **queue-position model** (on by default, `--no-queue-fills` turns it off) fills the strategy orders that price-time priority puts ahead of each executed feed order: better prices first, then those at the same price queued before it. They are filled up to the executed quantity, and the feed book is still reduced exactly. See the queue-position note.
 
 **Golden log:** `tests/data/golden_2000_seed7.bin` (`gen_events … 2000 7`) is committed together with its expected results: checksum `c46a281df7e17679`, 576 trades, volume 14,366, 109 cancel misses, 687 resting orders. Every storage variant must reproduce them. A separate test checks that the generator still produces the file byte-for-byte, so a generator change and a matching-behaviour change fail different tests.
 

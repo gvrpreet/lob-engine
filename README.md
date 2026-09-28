@@ -85,7 +85,7 @@ docs/            roadmap (start here) · architecture · workflow · benchmark l
 
 ## Status
 
-Phases 0–5 are complete; the phase-by-phase evidence is in [`docs/00-roadmap.md`](docs/00-roadmap.md). Phase 7 (hardening) is in progress: invariant checker, fuzzing and clang-tidy are done. Still open:
-- a queue-position fill model for strategies on ITCH data (today, strategy fills on ITCH are one-sided);
+Phases 0–5 and 7 are complete; the phase-by-phase evidence is in [`docs/00-roadmap.md`](docs/00-roadmap.md). Strategies on ITCH data get queue-position fills: feed executions fill the strategy orders ahead of them in price-time priority. Still open:
+- a smarter market maker (the current one treats its own order as the touch);
 - cross-day variance on a native host;
 - Phase 6 (concurrency).
