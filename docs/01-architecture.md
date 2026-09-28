@@ -71,7 +71,7 @@ events.bin ─► apply due gateway actions ─► apply feed event ─► deliv
   - The engine id is the order's original ITCH reference; the converter maps later references to it.
   - A/F become New. E/C (executions) and X (partial cancels) become Reduce. D becomes Cancel.
   - An ITCH replace U always loses priority. It becomes a Modify when the engine would also re-queue (new price or more shares), and Cancel + New with the same id otherwise.
-  - Prices stay in ITCH units (1/10000 $); timestamps are ns since midnight.
+  - Prices are ITCH units (1/10000 $) by default. `--tick 100` writes cents: any price that isn't a whole cent fails the conversion, unless `--drop-off-grid` drops those orders (counted). Real sub-dollar orders can be sub-penny. Timestamps are ns since midnight.
   - Consequence for strategies: real aggressors never reach the engine, so a strategy's resting order is filled only when a displayed Add crosses it. There is no queue-position model yet (see the Phase 5(d) note).
 
 **Golden log:** `tests/data/golden_2000_seed7.bin` (`gen_events … 2000 7`) is committed together with its expected results: checksum `c46a281df7e17679`, 576 trades, volume 14,366, 109 cancel misses, 687 resting orders. Every storage variant must reproduce them. A separate test checks that the generator still produces the file byte-for-byte, so a generator change and a matching-behaviour change fail different tests.
@@ -95,7 +95,7 @@ events.bin ─► apply due gateway actions ─► apply feed event ─► deliv
 | Integer ticks | exact, comparable, no FP error | never |
 | 32-bit handles, not pointers | half the link size, slab locality | pool > 4B orders |
 | Intrusive doubly-linked FIFO | O(1) cancel & pop-front, no alloc | queue positions need random access |
-| `std::map` levels (baseline) | simple & correct first | Phase 3 → ladder + bitmap |
+| `std::map` levels (baseline) | simple & correct first | Phase 3 → ladder + bitmap. Dense (band anchored on the first price) now wins by 14–22% on real ITCH flow in cents; switching the default is an open decision |
 | `unordered_map` index (baseline) | simple & correct first | Phase 3 → flat table |
 | Fixed-capacity pool | no allocation/latency spikes | grow-by-chunk if needed |
 | Single-threaded engine | no locks; determinism | scale by symbol sharding, not by threads per book |
