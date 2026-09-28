@@ -30,6 +30,21 @@ gen_events / ITCH converter ─► events.bin ─► read_events / mmap ─► r
                                                                       └─► ReplayStats {events, trades, volume, latency, checksum}
 ```
 
+**Trading replay (Phase 5f/g, `replay_trading`, `replay/src/trading.cpp`)** is a separate loop, so `replay()`'s hot path is untouched:
+```
+events.bin ─► apply due gateway actions ─► apply feed event ─► deliver fills ─► ITradingStrategy::on_event(book, gateway)
+                    ▲                                                │                         │
+                    └──────── OrderGateway queue (arrival = send + order_latency_ns) ◄──────────┴── on_fill(fill, gateway)
+```
+- **Actions:** `submit`, `cancel` and `modify` are queued, never applied synchronously. An action sent at time t (the timestamp of the event or action being handled) arrives at t + latency. It is applied before the first feed event with timestamp ≥ arrival, in send order.
+- **Fills:** they are delivered after the book operation that caused them finishes, so a strategy never sees a half-matched book. `Fill::remaining` is the order's exact quantity left in the book.
+- **Ids:** strategy ids are ≥ 2^63 (`kStrategyIdBase`). Feed events with ids in that range are skipped and counted as rejected.
+- **Metrics** (`StrategyMetrics`):
+  - Counts: orders, modifies, cancels, rejects, misses, and actions still in flight at the end.
+  - Quantities: fills (and how many were aggressive), filled vs offered shares, position, and cash.
+  - PnL and slippage: realised PnL (average cost), marked PnL (final mid), and slippage against the mid when the order was sent (positive = cost).
+- **Determinism:** same log + strategy + latency ⇒ bit-identical metrics and checksum. A strategy that sends nothing reproduces `replay()` exactly.
+
 ### Event log file format (v1 `LOBEVT01`, v2 `LOBEVT02`)
 | Offset | Size | Field |
 |---|---|---|
