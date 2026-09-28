@@ -1,7 +1,7 @@
 #pragma once
 // Phase 5(f)+(g): strategies that send orders into the replayed book, and their metrics.
 // This is a separate replay entry from replay(): the plain replay loop is not touched, so its
-// inlining and instruction count cannot change (see the Phase 5(c) note on why that matters).
+// inlining and instruction count cannot change (Phase 5(c) showed that extra call sites on the hot path cost inlining).
 #include <cstdint>
 #include <deque>
 #include <span>

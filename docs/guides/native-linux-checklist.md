@@ -23,7 +23,7 @@ Status after native day 1 (2026-09-27). Variance days 2–3 run on git tag `nati
 4. `bench_match` timer overhead: `steady_clock` vs `rdtscp`.
 5. THP (`MADV_HUGEPAGE`) vs prefault-only, with dTLB miss counters.
 6. `scripts/bench.sh 5000000 2` on three separate days, for the variance check.
-7. Append every result to `../benchmark-log.md` with hardware, compiler, flags, commit and run count, and update the Phase 2/3/4 experiment notes.
+7. Append every result to `../benchmark-log.md` with hardware, compiler, flags, commit and run count.
 
 `scripts/native_run.sh` automates steps 1–6 with full logging (`full` for day 1, `variance` for days 2–3). The repo reaches the live system as a `git bundle`, and `data/*.bin` are regenerated and checksum-verified by the run script.
 
@@ -75,4 +75,4 @@ These were recorded when the `std::map` tree was still the default level store (
 | `unordered_map` vs flat index | 20.1 vs 20.6 | 17.6 vs 19.4 (flat higher) | 773 vs 490 | Phase 3(a), 100k-event harness |
 | latency off / vector+steady / histogram+steady | 4.49 / 5.57 / 4.51 | 4.01 / 4.96 / 4.01 | 254.9 / 380.3 / 352.9 | Phase 4 tsc-histogram |
 
-Each row uses its own build and run options (see the linked experiment notes). Compare within a row, not across rows.
+Each row uses its own build and run options (see the Source column). Compare within a row, not across rows.

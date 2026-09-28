@@ -38,7 +38,7 @@ class MarketMaker final : public ITradingStrategy {
     std::uint32_t requote_every = 1;  // re-check quotes every N feed events
     // Skip price levels where only this strategy's own order rests when reading the touch. With
     // false (the original behaviour) a quote left alone at a price keeps "joining" itself, stays
-    // stale after the market moves away, and is picked off (see the queue-position note).
+    // stale after the market moves away, and is picked off.
     bool exclude_own_orders = true;
   };
   MarketMaker() = default;

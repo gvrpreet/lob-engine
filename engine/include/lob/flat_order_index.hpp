@@ -95,7 +95,6 @@ class BasicFlatOrderIndex {
   // with old orders still resting, and replay collapsed from 15.5M ev/s at 10M events to 0.41M
   // at 15M. Scattering every id fixes that but loses the identity hash's locality for recent
   // ids (-43% at 1M). 64-id blocks keep most of it and are fastest from 10M to 50M events.
-  // See docs/experiments/2026-09-28-index-hash-clustering.md.
 #if !defined(LOB_INDEX_BLOCK_BITS)
 #define LOB_INDEX_BLOCK_BITS 6  // experiment knob: 2^bits consecutive ids stay together
 #endif

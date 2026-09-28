@@ -136,7 +136,7 @@ the default), similar room temperature, on AC, and an idle cool-down first.
    cp -r /mnt/d/lob-results/* ~/projects/lob-engine/results/
    scripts/native_compare.sh results
    ```
-4. Ask Claude to **import the native results**. That turns them into benchmark-log rows, updates the Phase 2/3/4 experiment notes, and ticks the checklist in `native-linux-checklist.md`. The docs are the permanent record; `results/` holds the raw evidence.
+4. **Import the native results**: add benchmark-log rows and tick the checklist in `native-linux-checklist.md`. The docs are the permanent record; `results/` holds the raw evidence.
 
 ## 8. What each run folder contains
 `lob-results/<YYYY-MM-DD_HHMMSS>_<full|variance>/`

@@ -22,7 +22,7 @@ struct NullSink {
 
 // Price-time priority limit order book. Single-threaded by design.
 //
-// Defaults (see docs/roadmap.md):
+// Defaults (see docs/architecture.md, design decisions):
 //   price levels : DensePriceLevels    -> re-centring bitmap band + overflow map. Default since
 //                                         2026-09-28: 10-22% faster than the tree on real ITCH
 //                                         flow (TreePriceLevels stays available: TreeOrderBook)

@@ -2,7 +2,7 @@
 
 ## The loop (per change)
 ```
- 1. HYPOTHESIS   write it in docs/experiments/YYYY-MM-DD-name.md
+ 1. HYPOTHESIS   write it down first, in an experiment note (YYYY-MM-DD-name.md)
                  ("Replacing unordered_map with flat table cuts LLC misses/event by ~X because ...")
  2. TEST FIRST   add/extend a test (unit or differential) that pins behaviour
  3. IMPLEMENT    smallest change; keep the old implementation selectable until proven
@@ -22,7 +22,7 @@ If step 6 has no explanation, you don't understand the change yet — that's the
 - [ ] Experiment note filled in (hypothesis → result → what surprised you)
 
 ## Daily / weekly cadence
-- **Daily (60–120 min):** 25 min read/watch → 60 min build → 10 min notes (`docs/journal/notes-template.md`).
+- **Daily (60–120 min):** 25 min read/watch → 60 min build → 10 min notes.
 - **Weekly:** phase review — check exit criteria, update the resume evidence map, decide next experiment.
 - **Rule:** re-implement, don't copy. For each phase, write the code from scratch first, then compare with the reference.
 

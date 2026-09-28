@@ -1,12 +1,12 @@
 # Changelog
 
-Milestones are git tags. Each entry links to the experiment note that holds the evidence
-(`docs/experiments/`). Numbers are summarised here; full provenance is in `docs/benchmark-log.md`.
+Milestones are git tags. Numbers are summarised here; full provenance (commit, hardware, flags,
+run count) is in `docs/benchmark-log.md`.
 
 ## 0.9.0 (2026-09-28): repository layout
 - Component layout: `engine/` (`lob::engine`), `replay/` (`lob::replay`), `apps/`, `bench/`, `tests/{unit,fuzz,support,data}`.
 - CMake options (`LOB_BUILD_TESTS/APPS/BENCH`, `LOB_INSTALL`) and `find_package(lob_engine)` support.
-- MIT license, `.gitattributes`, `.editorconfig`, and docs reorganised into `guides/`, `experiments/` and `journal/`.
+- MIT license, `.gitattributes`, `.editorconfig`, and docs reorganised (design docs, benchmark log, `guides/`).
 
 ## Strategy and fill model (2026-09-28): tags `queue-fills`, `mm-others-touch`
 - Queue-position fills: ITCH executions become an `Execute` event (format v3). Feed executions fill the strategy orders that price-time priority puts ahead of them.

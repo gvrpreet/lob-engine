@@ -7,7 +7,7 @@ A single-threaded, price-time priority matching engine, and a deterministic repl
 - **Matching:** limit and market orders, cancel, same-id modify and partial cancel.
 - **Replay:** plain, streaming, timestamp-paced, and a mode where a strategy trades through a latency-delayed order gateway.
 
-It was built as a curriculum, one phase at a time: every optimisation comes with a test that guards correctness and a measurement that explains the result. The build log, dead ends included, is in [`docs/`](docs/README.md).
+It was built as a curriculum, one phase at a time: every optimisation comes with a test that guards correctness and a measurement that explains the result. The design and the measurements behind every number are in [`docs/`](docs/README.md).
 
 ## Architecture
 
@@ -42,7 +42,7 @@ Unless marked native, the numbers come from WSL2 on a Ryzen 7 7840HS, with GCC 1
 | ITCH reconstruction | AAPL, AMD, TQQQ, TSLA rebuilt with 0 unknown references, 0 misses, 0 crossed states |
 | Fuzzing | 21.2M operations (dense and tree books vs a naive oracle) clean under ASan/UBSan |
 
-Things the measurements caught along the way, each written up in `docs/experiments/`:
+Things the measurements caught along the way (each has rows in the benchmark log):
 - A +19% instruction regression hidden by timing noise (lost inlining).
 - An order-index hash that collapsed after about 10M events (identity hash plus linear probing).
 - A dense-vs-tree conclusion that reversed twice once real data was used.
@@ -92,7 +92,7 @@ tests/
   data/              committed golden event logs with pinned results
 scripts/           build · check · tidy · fuzz · bench · perf · phase5_exit · stream_measure · native_{setup,run,compare}
 cmake/             package config for find_package(lob_engine)
-docs/              architecture · roadmap · workflow · benchmark log · experiments/ · guides/ · journal/
+docs/              architecture · workflow · benchmark log · guides/
 ```
 
 ## Using it as a library
@@ -110,7 +110,7 @@ Options: `LOB_BUILD_TESTS`, `LOB_BUILD_APPS`, `LOB_BUILD_BENCH`, `LOB_INSTALL`, 
 
 ## Status
 
-Phases 0–5 and 7 are complete; the phase-by-phase evidence is in [`docs/roadmap.md`](docs/roadmap.md). Strategies on ITCH data get queue-position fills: feed executions fill the strategy orders ahead of them in price-time priority. The demo market maker quotes at the others' touch. It is a test strategy, not a profitable one: its day results on real data are near zero and noisy. Still open:
+Phases 0–5 and 7 are complete; the evidence is in [`docs/benchmark-log.md`](docs/benchmark-log.md). Strategies on ITCH data get queue-position fills: feed executions fill the strategy orders ahead of them in price-time priority. The demo market maker quotes at the others' touch. It is a test strategy, not a profitable one: its day results on real data are near zero and noisy. Still open:
 - better strategies (queue-priority preservation, inventory skew) and multi-day data for any statistical claim;
 - cross-day variance on a native host;
 - Phase 6 (concurrency).

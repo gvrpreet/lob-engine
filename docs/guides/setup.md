@@ -2,20 +2,17 @@
 
 This is the on-ramp and the reference manual. Read §1–§5 once and run the commands. Come back to
 §6–§8 whenever you need a tool's arguments or the expected outputs. For the learning/build plan,
-see `docs/roadmap.md`; for the per-change loop, `docs/workflow.md`; for where the project
-currently stands, the latest **Status** lines in `docs/roadmap.md` and `CHANGELOG.md`.
+see `docs/architecture.md`; for the per-change loop, `docs/workflow.md`; for where the project
+currently stands, `CHANGELOG.md`.
 
 | Doc | Use it for |
 |---|---|
 | `guides/setup.md` (this file) | install, build, verify, tool usage, troubleshooting |
-| `roadmap.md` | phases, exit criteria, what to learn/build next |
 | `architecture.md` | data model, invariants, design decisions |
 | `workflow.md` | the 8-step change loop, definition of done, benchmark protocol |
 | `benchmark-log.md` | append-only measured results |
 | `guides/native-linux-checklist.md` | what needs a native host, run order, WSL2 reference data |
 | `guides/native-linux-live-usb.md` | step-by-step native run from a live USB on the same laptop, with automatic result logging |
-| `journal/development-journey.md` | why decisions were made; what was deferred |
-| `experiments/`, `journal/notes/` | per-experiment records and daily notes |
 
 ---
 ## 1. Pick an environment
@@ -223,7 +220,7 @@ invocation, and don't publish absolute latencies from a VM as bare-metal figures
 - [ ] `scripts/check.sh` → `CHECK PASSED`, with no new compiler warnings
 - [ ] Differential test passes; replay checksums unchanged (§8)
 - [ ] For performance changes: benchmark row, a counter that explains the delta (or Cachegrind on WSL2), and a finished experiment note
-- [ ] After touching the replay loop, check that the **unmeasured** path's instruction count didn't change. Measurement code once pushed map/index calls out of line (+27 instructions/event). See `experiments/2026-09-27-phase4-tsc-histogram.md`.
+- [ ] After touching the replay loop, check that the **unmeasured** path's instruction count didn't change. Measurement code once pushed map/index calls out of line (+27 instructions/event).
 
 ## 8. Golden checksums (seed 42)
 
@@ -246,12 +243,11 @@ under WSL2, see "WSL2 reference data" in `docs/guides/native-linux-checklist.md`
 
 ## 9. Daily workflow: where to start
 
-1. Open the matching phase in `docs/roadmap.md` (its latest **Status** line says where things stand).
+1. Check `CHANGELOG.md` for where things stand, and `docs/architecture.md` for the invariants a change must keep.
 2. Follow the 8-step loop in `docs/workflow.md` for every change: hypothesis → test first → implement → check → measure → explain → record → commit.
-3. Each session, copy `docs/journal/notes-template.md` to `docs/journal/notes/$(date +%F)-phaseN.md` and fill it in.
-4. For each experiment, copy `docs/experiments/TEMPLATE.md` and write the hypothesis *before* the code.
-5. Re-implement, don't copy. For each phase, write the code from scratch first, then compare with the reference.
-6. Keep commits small and local. Branch as `phaseN/<topic>`; don't push unless you mean to.
+3. For each experiment, write the hypothesis down *before* the code.
+4. Re-implement, don't copy. For each phase, write the code from scratch first, then compare with the reference.
+5. Keep commits small and local. Branch as `phaseN/<topic>`; don't push unless you mean to.
 
 ## 10. Common problems
 
@@ -278,5 +274,5 @@ under WSL2, see "WSL2 reference data" in `docs/guides/native-linux-checklist.md`
 - `scripts/check.sh` is green, and CI (g++ and clang++ × debug/asan/release) would be too.
 - You can explain every invariant in `docs/architecture.md §4`, and why the code upholds it.
 - Every number you'd quote has a benchmark-log row with hardware, compiler, flags, commit and run count.
-- At least one filled-in note in `docs/journal/notes/`, and one experiment in `docs/experiments/` per optimization.
+- A written hypothesis and result for every optimization.
 - You never skipped writing the test before the implementation.
