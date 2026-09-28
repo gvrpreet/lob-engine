@@ -1,5 +1,6 @@
 // usage: replay_cli <events.bin> [--read] [--latency] [--tsc] [--huge-pages] [--naive] [--no-strategy] [--order-size 48|64] [--hot-cold] [--dense] [--sorted]
 //        replay_cli <events.bin> [--read] --strategy mm [--order-latency <ns>]   (trading replay, default book)
+//        replay_cli <events.bin> --stream [--window <events>] [--no-strategy]    (bounded memory, default book)
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -9,6 +10,7 @@
 #include <vector>
 
 #include "replay/event_log.hpp"
+#include "replay/event_stream.hpp"
 #include "replay/mapped_event_log.hpp"
 #include "replay/replayer.hpp"
 #include "replay/strategies.hpp"
@@ -18,9 +20,60 @@ int main(int argc, char** argv) {
   if (argc < 2) {
     std::fprintf(stderr,
                  "usage: %s <events.bin> [--read] [--latency] [--tsc] [--huge-pages] [--naive] [--no-strategy] [--order-size 48|64] [--hot-cold] [--dense] [--sorted]\n"
-                 "       %s <events.bin> [--read] --strategy mm [--order-latency <ns>]\n",
-           argv[0], argv[0]);
+                 "       %s <events.bin> [--read] --strategy mm [--order-latency <ns>]\n"
+                 "       %s <events.bin> --stream [--window <events>] [--no-strategy]\n",
+           argv[0], argv[0], argv[0]);
     return 2;
+  }
+  // Streaming: never loads the whole log; memory is the book plus a window of records.
+  bool stream = false;
+  for (int i = 2; i < argc; ++i) stream = stream || std::strcmp(argv[i], "--stream") == 0;
+  if (stream) {
+    std::size_t window = std::size_t{1} << 20;
+    bool with_strategy = true;
+    for (int i = 2; i < argc; ++i) {
+      if (std::strcmp(argv[i], "--stream") == 0) continue;
+      if (std::strcmp(argv[i], "--window") == 0 && i + 1 < argc) {
+        window = std::strtoull(argv[++i], nullptr, 10);
+      } else if (std::strcmp(argv[i], "--no-strategy") == 0) {
+        with_strategy = false;
+      } else {
+        std::fprintf(stderr, "--stream supports only --window <events> and --no-strategy\n");
+        return 2;
+      }
+    }
+    if (window == 0) {
+      std::fprintf(stderr, "--window must be at least 1\n");
+      return 2;
+    }
+    replay::EventLogStream in(window);
+    replay::VwapTracker vwap;
+    replay::ReplayStats st;
+    std::string error;
+    if (!in.open(argv[1], &error) ||
+        !replay::replay_stream(in, {}, st, with_strategy ? &vwap : nullptr, &error)) {
+      std::fprintf(stderr, "cannot replay %s: %s (after %llu events)\n", argv[1], error.c_str(),
+                   (unsigned long long)st.events);
+      return 1;
+    }
+    std::printf("load          : streamed (window %zu events = %.1f MB, v%u log)\n", window,
+                static_cast<double>(window * sizeof(replay::Event)) / 1e6, in.version());
+    std::printf("events        : %llu\n", (unsigned long long)st.events);
+    std::printf("trades        : %llu (volume %llu)\n", (unsigned long long)st.trades,
+                (unsigned long long)st.volume);
+    std::printf("rejected      : %llu   cancel misses: %llu   resting at end: %llu\n",
+                (unsigned long long)st.rejected, (unsigned long long)st.cancel_misses,
+                (unsigned long long)st.final_orders);
+    std::printf("amend misses  : modify %llu   reduce %llu\n", (unsigned long long)st.modify_misses,
+                (unsigned long long)st.reduce_misses);
+    std::printf("throughput    : %.2f M events/s (%.3f s, including reads)\n",
+                st.events_per_sec() / 1e6, st.seconds);
+    if (with_strategy)
+      std::printf("vwap / last   : %.3f / %lld\n", vwap.vwap(), (long long)vwap.last());
+    else
+      std::printf("strategy      : disabled\n");
+    std::printf("book checksum : %016llx\n", (unsigned long long)st.checksum);
+    return 0;
   }
   // Default: memory-map the log (zero-copy). --read copies it into a vector instead (the old path).
   bool copy_read = false;
