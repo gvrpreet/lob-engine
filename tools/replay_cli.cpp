@@ -1,6 +1,7 @@
 // usage: replay_cli <events.bin> [--read] [--latency] [--tsc] [--huge-pages] [--naive] [--no-strategy] [--order-size 48|64] [--hot-cold] [--dense] [--sorted]
 //        replay_cli <events.bin> [--read] --strategy mm [--order-latency <ns>]   (trading replay, default book)
 //        replay_cli <events.bin> --stream [--window <events>] [--no-strategy]    (bounded memory, default book)
+//        replay_cli <events.bin> [--read] --paced <speed> [--no-strategy]        (timestamp-paced, default book)
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -12,6 +13,7 @@
 #include "replay/event_log.hpp"
 #include "replay/event_stream.hpp"
 #include "replay/mapped_event_log.hpp"
+#include "replay/paced.hpp"
 #include "replay/replayer.hpp"
 #include "replay/strategies.hpp"
 #include "replay/trading.hpp"
@@ -21,8 +23,9 @@ int main(int argc, char** argv) {
     std::fprintf(stderr,
                  "usage: %s <events.bin> [--read] [--latency] [--tsc] [--huge-pages] [--naive] [--no-strategy] [--order-size 48|64] [--hot-cold] [--dense] [--sorted]\n"
                  "       %s <events.bin> [--read] --strategy mm [--order-latency <ns>]\n"
-                 "       %s <events.bin> --stream [--window <events>] [--no-strategy]\n",
-           argv[0], argv[0], argv[0]);
+                 "       %s <events.bin> --stream [--window <events>] [--no-strategy]\n"
+                 "       %s <events.bin> [--read] --paced <speed> [--no-strategy]\n",
+           argv[0], argv[0], argv[0], argv[0]);
     return 2;
   }
   // Streaming: never loads the whole log; memory is the book plus a window of records.
@@ -100,9 +103,17 @@ int main(int argc, char** argv) {
   unsigned order_size = 32;
   bool market_maker = false;
   bool latency_given = false;
+  double paced_speed = 0;  // > 0: timestamp-paced replay
   replay::TradingConfig trading;
   for (int i = 2; i < argc; ++i) {
     if (std::strcmp(argv[i], "--read") == 0) continue;  // handled above
+    else if (std::strcmp(argv[i], "--paced") == 0 && i + 1 < argc) {
+      paced_speed = std::strtod(argv[++i], nullptr);
+      if (!(paced_speed > 0)) {
+        std::fprintf(stderr, "--paced needs a speed > 0 (1 = real time)\n");
+        return 2;
+      }
+    }
     else if (std::strcmp(argv[i], "--strategy") == 0 && i + 1 < argc) {
       if (std::strcmp(argv[++i], "mm") != 0) {
         std::fprintf(stderr, "--strategy supports: mm\n");
@@ -139,6 +150,36 @@ int main(int argc, char** argv) {
   if (latency_given && !market_maker) {
     std::fprintf(stderr, "--order-latency needs --strategy mm\n");
     return 2;
+  }
+  if (paced_speed > 0) {
+    if (variants > 0 || market_maker || cfg.measure_latency) {
+      std::fprintf(stderr, "--paced runs on the default book without --latency or --strategy\n");
+      return 2;
+    }
+    replay::VwapTracker vwap;
+    const auto p = replay::replay_paced(ev, cfg, paced_speed, use_strategy ? &vwap : nullptr);
+    const auto& st = p.replay;
+    std::printf("load          : %.1f ms (%s, validated)\n", load_ms, copy_read ? "read into vector" : "mmap");
+    std::printf("events        : %llu\n", (unsigned long long)st.events);
+    std::printf("trades        : %llu (volume %llu)\n", (unsigned long long)st.trades,
+                (unsigned long long)st.volume);
+    std::printf("rejected      : %llu   cancel misses: %llu   resting at end: %llu\n",
+                (unsigned long long)st.rejected, (unsigned long long)st.cancel_misses,
+                (unsigned long long)st.final_orders);
+    std::printf("amend misses  : modify %llu   reduce %llu\n", (unsigned long long)st.modify_misses,
+                (unsigned long long)st.reduce_misses);
+    std::printf("paced         : speed %g, log span %.3f s -> wall %.3f s\n", p.speed, p.log_span_s,
+                st.seconds);
+    std::printf("lateness      : p50 %llu / p99 %llu / p99.9 %llu / max %llu ns; %llu events > 1 ms late\n",
+                (unsigned long long)p.lateness.percentile(50), (unsigned long long)p.lateness.percentile(99),
+                (unsigned long long)p.lateness.percentile(99.9), (unsigned long long)p.lateness.max(),
+                (unsigned long long)p.late_over_1ms);
+    if (use_strategy)
+      std::printf("vwap / last   : %.3f / %lld\n", vwap.vwap(), (long long)vwap.last());
+    else
+      std::printf("strategy      : disabled\n");
+    std::printf("book checksum : %016llx\n", (unsigned long long)st.checksum);
+    return 0;
   }
   if (market_maker) {
     if (variants > 0 || !use_strategy || cfg.measure_latency) {
