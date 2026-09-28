@@ -1,6 +1,6 @@
 // usage: replay_cli <events.bin> [--read] [--latency] [--tsc] [--huge-pages] [--naive] [--no-strategy] [--order-size 48|64] [--hot-cold] [--tree] [--sorted]
 //        (the default book uses dense levels; --tree selects the std::map level store)
-//        replay_cli <events.bin> [--read] --strategy mm [--order-latency <ns>] [--no-queue-fills]
+//        replay_cli <events.bin> [--read] --strategy mm [--order-latency <ns>] [--no-queue-fills] [--mm-self-touch]
 //                                                                                (trading replay, default book)
 //        replay_cli <events.bin> --stream [--window <events>] [--no-strategy]    (bounded memory, default book)
 //        replay_cli <events.bin> [--read] --paced <speed> [--no-strategy]        (timestamp-paced, default book)
@@ -24,7 +24,7 @@ int main(int argc, char** argv) {
   if (argc < 2) {
     std::fprintf(stderr,
                  "usage: %s <events.bin> [--read] [--latency] [--tsc] [--huge-pages] [--naive] [--no-strategy] [--order-size 48|64] [--hot-cold] [--tree] [--sorted]\n"
-                 "       %s <events.bin> [--read] --strategy mm [--order-latency <ns>] [--no-queue-fills]\n"
+                 "       %s <events.bin> [--read] --strategy mm [--order-latency <ns>] [--no-queue-fills] [--mm-self-touch]\n"
                  "       %s <events.bin> --stream [--window <events>] [--no-strategy]\n"
                  "       %s <events.bin> [--read] --paced <speed> [--no-strategy]\n",
            argv[0], argv[0], argv[0], argv[0]);
@@ -107,6 +107,7 @@ int main(int argc, char** argv) {
   bool latency_given = false;
   double paced_speed = 0;  // > 0: timestamp-paced replay
   replay::TradingConfig trading;
+  replay::MarketMaker::Params mm_params;
   for (int i = 2; i < argc; ++i) {
     if (std::strcmp(argv[i], "--read") == 0) continue;  // handled above
     else if (std::strcmp(argv[i], "--paced") == 0 && i + 1 < argc) {
@@ -130,6 +131,10 @@ int main(int argc, char** argv) {
     else if (std::strcmp(argv[i], "--no-queue-fills") == 0) {
       trading.queue_fills = false;
       latency_given = true;  // also a trading-replay-only option
+    }
+    else if (std::strcmp(argv[i], "--mm-self-touch") == 0) {
+      mm_params.exclude_own_orders = false;  // the original market maker, for comparison
+      latency_given = true;
     }
     else if (std::strcmp(argv[i], "--latency") == 0) cfg.measure_latency = true;
     else if (std::strcmp(argv[i], "--tsc") == 0) cfg.latency_timer = replay::LatencyTimer::Tsc;
@@ -158,7 +163,7 @@ int main(int argc, char** argv) {
   const int variants =
       int{naive} + int{hot_cold} + int{order_size != 32} + int{tree} + int{sorted} + int{huge};
   if (latency_given && !market_maker) {
-    std::fprintf(stderr, "--order-latency / --no-queue-fills need --strategy mm\n");
+    std::fprintf(stderr, "--order-latency / --no-queue-fills / --mm-self-touch need --strategy mm\n");
     return 2;
   }
   if (paced_speed > 0) {
@@ -196,7 +201,7 @@ int main(int argc, char** argv) {
       std::fprintf(stderr, "--strategy mm runs on the default book without --latency/--no-strategy\n");
       return 2;
     }
-    replay::MarketMaker mm;
+    replay::MarketMaker mm(mm_params);
     const auto ts = replay::replay_trading(ev, trading, mm);
     const auto& st = ts.replay;
     const auto& m = ts.strategy;
@@ -210,7 +215,8 @@ int main(int argc, char** argv) {
     std::printf("amend misses  : modify %llu   reduce %llu\n", (unsigned long long)st.modify_misses,
                 (unsigned long long)st.reduce_misses);
     std::printf("throughput    : %.2f M events/s (%.3f s)\n", st.events_per_sec() / 1e6, st.seconds);
-    std::printf("strategy      : market maker, order latency %llu ns, queue-position fills %s\n",
+    std::printf("strategy      : market maker (%s), order latency %llu ns, queue-position fills %s\n",
+                mm_params.exclude_own_orders ? "quotes at others' touch" : "self-touch",
                 (unsigned long long)trading.order_latency_ns, trading.queue_fills ? "on" : "off");
     std::printf("mm orders     : %llu submitted, %llu modifies, %llu cancels, %llu rejected, %llu misses, %llu in flight at end\n",
                 (unsigned long long)m.orders, (unsigned long long)m.modifies,

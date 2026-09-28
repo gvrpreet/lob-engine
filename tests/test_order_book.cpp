@@ -1,6 +1,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <limits>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -223,6 +224,50 @@ TEST(dense_price_levels_recentre_when_touch_leaves_band) {
   pinned.get_or_create(10'000).total_qty = 1;
   pinned.get_or_create(10'500).total_qty = 1;
   CHECK(pinned.recentres() == 0 && pinned.best_price() == 10'500);
+}
+
+template <class Compare>
+static void check_next_after(std::uint64_t seed) {
+  std::mt19937_64 rng(seed);
+  TreePriceLevels<Compare> tree;
+  DensePriceLevels<Compare> follow(101);           // re-centring band, small enough to overflow
+  DensePriceLevels<Compare> pinned(10'000, 101);   // fixed band 10'000..10'100
+  SortedPriceLevels<Compare> sorted;
+  std::vector<Price> queries{std::numeric_limits<Price>::min(), std::numeric_limits<Price>::max()};
+  for (int i = 0; i < 300; ++i) {
+    const Price p = 9'800 + static_cast<Price>(rng() % 500);  // around and beyond both bands
+    if (rng() % 4 == 0) {
+      tree.erase(p); follow.erase(p); pinned.erase(p); sorted.erase(p);
+    } else {
+      tree.get_or_create(p).total_qty = 1;
+      follow.get_or_create(p).total_qty = 1;
+      pinned.get_or_create(p).total_qty = 1;
+      sorted.get_or_create(p).total_qty = 1;
+    }
+    queries.push_back(p);
+    queries.push_back(p + 1);
+    queries.push_back(p - 1);
+  }
+  for (const Price q : {Price{9'999}, Price{10'000}, Price{10'100}, Price{10'101}}) queries.push_back(q);
+  for (const Price q : queries) {
+    const auto expected = tree.next_after(q);
+    CHECK(follow.next_after(q) == expected);
+    CHECK(pinned.next_after(q) == expected);
+    CHECK(sorted.next_after(q) == expected);
+  }
+}
+
+TEST(next_after_matches_tree_on_every_level_store) {
+  check_next_after<std::less<Price>>(21);     // asks
+  check_next_after<std::greater<Price>>(22);  // bids
+  check_next_after<std::less<Price>>(23);
+  check_next_after<std::greater<Price>>(24);
+  OrderBook b(16);
+  b.add(1, Side::Buy, OrderType::Limit, 100, 1, 1, NullSink{});
+  b.add(2, Side::Buy, OrderType::Limit, 97, 1, 2, NullSink{});
+  b.add(3, Side::Sell, OrderType::Limit, 103, 1, 3, NullSink{});
+  CHECK(b.next_price_after(Side::Buy, 100) == 97 && b.next_price_after(Side::Buy, 97) == std::nullopt);
+  CHECK(b.next_price_after(Side::Sell, 103) == std::nullopt && b.next_price_after(Side::Sell, 101) == 103);
 }
 
 TEST(dense_order_book_matches_tree_at_real_price_scale) {

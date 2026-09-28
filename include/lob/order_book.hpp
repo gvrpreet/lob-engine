@@ -142,6 +142,11 @@ class BasicOrderBook {
     qty = pool_.qty(h);
     return true;
   }
+  // The next price level on `side` strictly after `price` in priority order (e.g. the second-best
+  // bid when `price` is the best bid); nullopt if there is none.
+  std::optional<Price> next_price_after(Side side, Price price) const {
+    return side == Side::Buy ? bids_.next_after(price) : asks_.next_after(price);
+  }
   // Visits the orders queued at (side, price) in time priority as f(OrderId, Qty); stops as
   // soon as f returns false.
   template <class F>

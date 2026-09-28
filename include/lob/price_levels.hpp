@@ -10,6 +10,7 @@
 #include <optional>
 #include <stdexcept>
 #include <type_traits>
+#include <iterator>
 #include <utility>
 #include <vector>
 
@@ -44,6 +45,12 @@ class TreePriceLevels {
     if (levels_.empty()) return nullptr;
     price = levels_.begin()->first;
     return &levels_.begin()->second;
+  }
+
+  // The next level in priority order strictly after `price` (whether or not `price` is stored).
+  std::optional<Price> next_after(Price price) const {
+    const auto it = levels_.upper_bound(price);
+    return it == levels_.end() ? std::nullopt : std::optional<Price>(it->first);
   }
 
   void erase(Price price) { levels_.erase(price); }
@@ -129,6 +136,32 @@ class DensePriceLevels {
     if (!best) return nullptr;
     price = *best;
     return find(price);
+  }
+
+  // The next level in priority order strictly after `price` (whether or not `price` is stored):
+  // the nearer of the next occupied band slot and the next overflow level.
+  std::optional<Price> next_after(Price price) const {
+    std::optional<Price> dense;
+    if (!levels_.empty()) {
+      const Price last = price_at(levels_.size() - 1);
+      if constexpr (kDescending) {  // bids: worse = lower price = lower index
+        if (price > base_) {
+          const std::size_t end = price > last ? levels_.size() : static_cast<std::size_t>(price - base_);
+          if (const std::size_t i = prev_set_below(end); i != kNoIndex) dense = price_at(i);
+        }
+      } else {  // asks: worse = higher price = higher index
+        if (price < last) {
+          const std::size_t start = price < base_ ? 0 : static_cast<std::size_t>(price - base_) + 1;
+          if (const std::size_t i = next_set_from(start); i != kNoIndex) dense = price_at(i);
+        }
+      }
+    }
+    const auto it = overflow_.upper_bound(price);
+    const std::optional<Price> over =
+        it == overflow_.end() ? std::nullopt : std::optional<Price>(it->first);
+    if (!dense) return over;
+    if (!over) return dense;
+    return Compare{}(*dense, *over) ? dense : over;
   }
 
   void erase(Price price) {
@@ -267,6 +300,32 @@ class DensePriceLevels {
     return kNoIndex;
   }
 
+  // First occupied index >= start, or kNoIndex.
+  std::size_t next_set_from(std::size_t start) const noexcept {
+    if (start >= levels_.size()) return kNoIndex;
+    std::size_t word = start / 64;
+    std::uint64_t bits = occupied_[word] & (~std::uint64_t{0} << (start % 64));
+    while (bits == 0) {
+      if (++word == occupied_.size()) return kNoIndex;
+      bits = occupied_[word];
+    }
+    return word * 64 + static_cast<std::size_t>(std::countr_zero(bits));
+  }
+
+  // Last occupied index < end, or kNoIndex.
+  std::size_t prev_set_below(std::size_t end) const noexcept {
+    if (end == 0) return kNoIndex;
+    const std::size_t last = end - 1;
+    std::size_t word = last / 64;
+    const unsigned keep = static_cast<unsigned>(last % 64) + 1;  // bits 0..last%64
+    std::uint64_t bits = occupied_[word] & (keep == 64 ? ~std::uint64_t{0} : (std::uint64_t{1} << keep) - 1);
+    while (bits == 0) {
+      if (word == 0) return kNoIndex;
+      bits = occupied_[--word];
+    }
+    return word * 64 + (63 - static_cast<std::size_t>(std::countl_zero(bits)));
+  }
+
   bool next_dense(std::size_t& cursor, std::size_t& index) const noexcept {
     if constexpr (kDescending) {
       while (cursor > 0) {
@@ -333,6 +392,14 @@ class SortedPriceLevels {
     if (levels_.empty()) return nullptr;
     price = levels_.back().price;
     return &levels_.back().level;
+  }
+
+  // The next level in priority order strictly after `price`. Entries run worst → best, and
+  // lower_bound finds the first entry at or better than `price`: the next worse is just before.
+  std::optional<Price> next_after(Price price) const {
+    const auto it = lower_bound(price);
+    if (it == levels_.begin()) return std::nullopt;
+    return std::prev(it)->price;
   }
 
   void erase(Price price) {

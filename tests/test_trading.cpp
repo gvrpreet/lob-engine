@@ -184,6 +184,49 @@ TEST(queue_position_fills_from_feed_executions) {
   }
 }
 
+TEST(market_maker_leaves_a_level_where_it_is_alone) {
+  // The real bid at 100 is cancelled and a new one appears at 98. With exclude_own_orders the
+  // market maker follows the others' touch (to the 90 filler bid, then 98); the original version
+  // keeps "joining" its own lone 100 bid.
+  const std::vector<Event> ev{limit(100, 1, Side::Sell, 105, 10), limit(200, 2, Side::Buy, 100, 10),
+                              limit(300, 9, Side::Buy, 90, 1),    // neutral: the mm bid arrives
+                              [] { Event e{}; e.ts = 400; e.id = 2; e.type = EventType::Cancel; return e; }(),
+                              limit(500, 3, Side::Buy, 98, 10),   // the others' touch is now 98
+                              limit(600, 4, Side::Buy, 90, 1),    // neutral: a re-quote arrives
+                              limit(700, 5, Side::Buy, 90, 1)};
+  struct Spy final : replay::ITradingStrategy {
+    replay::MarketMaker mm;
+    std::vector<Price> bid;  // the strategy's resting bid price at each event (0 = none)
+    explicit Spy(replay::MarketMaker::Params p) : mm(p) {}
+    void on_event(const Event& e, const OrderBook& book, replay::OrderGateway& gw) override {
+      Price price = 0;
+      for (OrderId id = replay::kStrategyIdBase; id < replay::kStrategyIdBase + 16; ++id) {
+        Side s; Price p; Qty q;
+        if (book.find_order(id, s, p, q) && s == Side::Buy) price = p;
+      }
+      bid.push_back(price);
+      mm.on_event(e, book, gw);
+    }
+    void on_fill(const replay::Fill& f, replay::OrderGateway& gw) override { mm.on_fill(f, gw); }
+  };
+  for (const bool exclude : {true, false}) {
+    replay::MarketMaker::Params p;
+    p.exclude_own_orders = exclude;
+    Spy spy(p);
+    replay::replay_trading(ev, {}, spy);
+    CHECK(spy.bid.size() == ev.size());
+    if (spy.bid.size() != ev.size()) continue;
+    CHECK(spy.bid[2] == 100 && spy.bid[3] == 100);  // joined the real bid at 100
+    if (exclude) {
+      // Alone at 100 after the cancel: steps down to the next real level (the 90 bid), then
+      // up to 98 when that becomes the others' touch.
+      CHECK(spy.bid[4] == 90 && spy.bid[5] == 98 && spy.bid[6] == 98);
+    } else {
+      CHECK(spy.bid[4] == 100 && spy.bid[5] == 100 && spy.bid[6] == 100);  // stuck on itself
+    }
+  }
+}
+
 TEST(feed_ids_in_strategy_range_are_skipped) {
   const std::vector<Event> ev{limit(100, replay::kStrategyIdBase + 5, Side::Buy, 90, 5),
                               limit(200, 1, Side::Sell, 110, 5)};
@@ -208,23 +251,34 @@ TEST(silent_strategy_reproduces_plain_replay_on_golden_logs) {
   }
 }
 
-// Pinned result (replay_cli golden_2000_seed7.bin --strategy mm --order-latency 1000). A change
-// here means strategy-visible behaviour changed: matching, gateway timing, or the market maker.
+// Pinned results (replay_cli golden_2000_seed7.bin --strategy mm --order-latency 1000 [--mm-self-touch]).
+// A change here means strategy-visible behaviour changed: matching, gateway timing, or the market
+// maker. The self-touch pin is the original (pre-2026-09-28) market maker, kept as a compatibility check.
 TEST(market_maker_golden_result) {
   std::vector<Event> ev;
   CHECK(replay::read_events(std::string(LOB_TEST_DATA_DIR) + "/golden_2000_seed7.bin", ev));
   replay::TradingConfig cfg;
   cfg.order_latency_ns = 1000;
-  replay::MarketMaker mm;
+  replay::MarketMaker mm;  // quotes at the others' touch (default)
   const auto r = replay::replay_trading(ev, cfg, mm);
   const auto& m = r.strategy;
-  CHECK(r.replay.checksum == 0x75d40b3788c04ed5ULL);
-  CHECK(r.replay.trades == 687 && r.replay.volume == 14'644 && r.replay.final_orders == 699);
-  CHECK(m.orders == 135 && m.modifies == 100 && m.cancels == 0 && m.misses == 1 && m.dropped == 0);
-  CHECK(m.fills == 151 && m.aggressive_fills == 1);
-  CHECK(m.filled_qty == 1337 && m.submitted_qty == 1357);
-  CHECK(m.position == 53 && m.cash == -529'268);
+  CHECK(r.replay.checksum == 0x94793a19cdfa4789ULL);
+  CHECK(r.replay.trades == 680 && r.replay.volume == 14'637 && r.replay.final_orders == 696);
+  CHECK(m.orders == 128 && m.modifies == 124 && m.cancels == 4 && m.misses == 2 && m.dropped == 0);
+  CHECK(m.fills == 140 && m.aggressive_fills == 1);
+  CHECK(m.filled_qty == 1257 && m.submitted_qty == 1317);
+  CHECK(m.position == 15 && m.cash == -149'431);
   CHECK(near(m.mark_price, 9994.5));
+
+  replay::MarketMaker::Params self_touch;
+  self_touch.exclude_own_orders = false;
+  replay::MarketMaker old(self_touch);
+  const auto o = replay::replay_trading(ev, cfg, old);
+  CHECK(o.replay.checksum == 0x75d40b3788c04ed5ULL);
+  CHECK(o.replay.trades == 687 && o.replay.volume == 14'644 && o.replay.final_orders == 699);
+  CHECK(o.strategy.orders == 135 && o.strategy.modifies == 100 && o.strategy.misses == 1);
+  CHECK(o.strategy.fills == 151 && o.strategy.filled_qty == 1337 && o.strategy.submitted_qty == 1357);
+  CHECK(o.strategy.position == 53 && o.strategy.cash == -529'268);
 }
 
 TEST(market_maker_is_deterministic_and_respects_position_limit) {
