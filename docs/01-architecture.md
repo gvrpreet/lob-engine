@@ -82,7 +82,7 @@ events.bin ─► apply due gateway actions ─► apply feed event ─► deliv
 
 **Golden v2 log:** `tests/data/golden_v2_2000_seed7.bin` (`gen_events … 2000 7 15`, so 15% Modify/Reduce: 1343 New, 339 Cancel, 231 Modify, 87 Reduce). Expected: checksum `91319d83ac94152c`, 489 trades, volume 12,124, 98 cancel / 68 modify / 21 reduce misses, 593 resting orders. These are checked on all 8 variants and both readers, with the same generator-reproduction test.
 
-## 4. Invariants (assert these in `validate()` — Phase 7)
+## 4. Invariants (`OrderBook::validate()` checks 1, 2, 3 and 6; 4, 5 and 7–9 are covered by the oracle comparisons in the differential tests and the fuzzer)
 1. Every resting order is in exactly one level's list and exactly once in `index_`.
 2. Book is never crossed after an operation: `best_bid < best_ask` (when both exist).
 3. `level.total_qty == Σ order.qty` and `level.count == list length`; empty levels are erased.
