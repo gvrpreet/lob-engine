@@ -67,7 +67,8 @@ which is fine: results go to drive B.
 sudo add-apt-repository -y universe && sudo apt update && sudo apt install -y git
 git clone /media/ubuntu/LOBDATA/lob-engine.bundle ~/lob-engine
 cd ~/lob-engine
-git log --oneline -1                     # same commit as in §2
+git checkout native-variance             # variance days: pinned code (f38b151), see below
+git log --oneline -1                     # f38b151 on variance days; otherwise the commit from §2
 scripts/native_setup.sh                  # toolchain, perf, governor/EPP = performance; prints a verify block
 ```
 **Check setup's "Verify" block** before moving on:
@@ -111,6 +112,11 @@ cd ~/lob-engine
 scripts/native_run.sh variance /media/ubuntu/LOBDATA/lob-results
 scripts/native_compare.sh /media/ubuntu/LOBDATA/lob-results
 ```
+Run days 2 and 3 on the `native-variance` tag (`f38b151`), even if the bundle holds newer commits.
+Later work (Phase 5c onwards) changes the replay loop, so newer code would not measure the same thing
+as day 1. With a persistent stick whose `~/lob-engine` already exists, update it instead of cloning:
+`git fetch /media/ubuntu/LOBDATA/lob-engine.bundle --tags && git checkout native-variance`.
+
 `native_compare.sh` prints each workload/variant's medians across runs and flags spreads above
 the Phase 4 target of ~5% with `!`. Try to keep conditions alike each day: same core (`CORE=2`,
 the default), similar room temperature, on AC, and an idle cool-down first.
