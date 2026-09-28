@@ -7,26 +7,60 @@
 
 namespace replay {
 
-std::vector<Event> generate_events(std::size_t count, std::uint64_t seed) {
+std::vector<Event> generate_events(std::size_t count, std::uint64_t seed,
+                                   std::uint32_t modify_percent) {
+  if (modify_percent > 100) throw std::invalid_argument("modify_percent must be 0..100");
   std::mt19937_64 rng(seed);
   std::vector<Event> out;
   out.reserve(count);
-  std::vector<lob::OrderId> live;  // ids that *may* still rest (fills are not tracked on purpose)
+  // Limit orders that *may* still rest (fills are not tracked on purpose), with the side and
+  // price they were last given, so a Modify can keep the price or move it on the right side.
+  struct Live { lob::OrderId id; lob::Side side; lob::Price price; };
+  std::vector<Live> live;
   lob::OrderId next_id = 1;
   lob::Price mid = 10'000;
   lob::Timestamp ts = 1'000'000'000ULL;
+  const auto limit_price = [&](lob::Side side) {
+    const lob::Price off = static_cast<lob::Price>(rng() % 21);
+    // +/-2 tick overlap makes a fraction of limit orders cross the spread.
+    return side == lob::Side::Buy ? mid + 2 - off : mid - 2 + off;
+  };
 
   for (std::size_t i = 0; i < count; ++i) {
     ts += 500 + rng() % 1000;
     if (i % 100 == 0) mid += static_cast<lob::Price>(rng() % 3) - 1;  // random walk
-    const auto r = static_cast<unsigned>(rng() % 100);
 
     Event e{};
     e.ts = ts;
+    // Opt-in amendments. With modify_percent == 0 this draws nothing, so v1 streams are unchanged.
+    if (modify_percent != 0 && !live.empty() && rng() % 100 < modify_percent) {
+      Live& target = live[rng() % live.size()];
+      e.id = target.id;
+      switch (rng() % 3) {
+        case 0:  // partial cancel
+          e.type = EventType::Reduce;
+          e.qty = 1 + static_cast<lob::Qty>(rng() % 50);
+          break;
+        case 1:  // same price, new qty: lower keeps priority, higher re-queues
+          e.type = EventType::Modify;
+          e.price = target.price;
+          e.qty = 1 + static_cast<lob::Qty>(rng() % 100);
+          break;
+        default:  // new price (may cross)
+          e.type = EventType::Modify;
+          e.price = target.price = limit_price(target.side);
+          e.qty = 1 + static_cast<lob::Qty>(rng() % 100);
+          break;
+      }
+      out.push_back(e);
+      continue;
+    }
+
+    const auto r = static_cast<unsigned>(rng() % 100);
     if (r < 20 && !live.empty()) {
       const std::size_t k = rng() % live.size();
       e.type = EventType::Cancel;
-      e.id = live[k];
+      e.id = live[k].id;
       live[k] = live.back();
       live.pop_back();
     } else {
@@ -38,10 +72,8 @@ std::vector<Event> generate_events(std::size_t count, std::uint64_t seed) {
         e.otype = lob::OrderType::Market;
       } else {
         e.otype = lob::OrderType::Limit;
-        const lob::Price off = static_cast<lob::Price>(rng() % 21);
-        // +/-2 tick overlap makes a fraction of limit orders cross the spread.
-        e.price = e.side == lob::Side::Buy ? mid + 2 - off : mid - 2 + off;
-        live.push_back(e.id);
+        e.price = limit_price(e.side);
+        live.push_back({e.id, e.side, e.price});
       }
     }
     out.push_back(e);

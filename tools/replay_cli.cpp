@@ -87,7 +87,9 @@ int main(int argc, char** argv) {
   std::printf("rejected      : %llu   cancel misses: %llu   resting at end: %llu\n",
               (unsigned long long)st.rejected, (unsigned long long)st.cancel_misses,
               (unsigned long long)st.final_orders);
-  std::printf("throughput    : %.2f M events/s (%.3f s)\n", st.events_per_sec() / 1e6, st.seconds);
+  std::printf("amend misses  : modify %llu   reduce %llu\n", (unsigned long long)st.modify_misses,
+              (unsigned long long)st.reduce_misses);
+  std::printf("throughput   : %.2f M events/s (%.3f s)\n", st.events_per_sec() / 1e6, st.seconds);
   if (!naive && !hot_cold && order_size == 32 && use_strategy)
     std::printf("vwap / last   : %.3f / %lld\n", vwap.vwap(), (long long)vwap.last());
   else

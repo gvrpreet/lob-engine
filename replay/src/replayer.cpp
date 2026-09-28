@@ -51,12 +51,24 @@ ReplayStats replay_with_book(std::span<const Event> events, const ReplayConfig& 
     std::uint64_t start = 0;
     if (cfg.measure_latency) start = read_timer();
 
-    if (event.type == EventType::New) {
-      if (book.add(event.id, event.side, event.otype, event.price, event.qty, event.ts, sink) ==
-          lob::AddResult::Rejected)
-        ++st.rejected;
-    } else if (!book.cancel(event.id)) {
-      ++st.cancel_misses;
+    switch (event.type) {
+      case EventType::New:
+        if (book.add(event.id, event.side, event.otype, event.price, event.qty, event.ts, sink) ==
+            lob::AddResult::Rejected)
+          ++st.rejected;
+        break;
+      case EventType::Cancel:
+        if (!book.cancel(event.id)) ++st.cancel_misses;
+        break;
+      case EventType::Modify: {
+        const auto r = book.modify(event.id, event.price, event.qty, event.ts, sink);
+        if (r == lob::ModifyResult::NotFound) ++st.modify_misses;
+        else if (r == lob::ModifyResult::Rejected) ++st.rejected;
+        break;
+      }
+      case EventType::Reduce:
+        if (!book.reduce(event.id, event.qty)) ++st.reduce_misses;
+        break;
     }
 
     if (cfg.measure_book_shape) {

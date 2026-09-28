@@ -28,6 +28,7 @@ struct ReplayConfig {
 struct ReplayStats {
   std::uint64_t events = 0, trades = 0, volume = 0;
   std::uint64_t rejected = 0, cancel_misses = 0, final_orders = 0;
+  std::uint64_t modify_misses = 0, reduce_misses = 0;  // v2 logs: the id was not resting
   std::uint64_t final_levels = 0, peak_levels = 0;
   std::uint64_t checksum = 0;  // book state hash at end of replay
   std::uint64_t anon_huge_kb = 0;  // process AnonHugePages at end of replay_hugepages (Linux only)

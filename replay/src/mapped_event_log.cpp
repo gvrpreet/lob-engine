@@ -58,8 +58,9 @@ bool MappedEventLog::open(const std::string& path, std::string* error) {
   if (file_bytes < kEventLogHeaderBytes) {  // also avoids a zero-length mmap, which is an error
     ::close(fd);
     std::uint64_t unused = 0;
+    unsigned unused_version = 0;
     const char none[kEventLogHeaderBytes] = {};
-    return check_event_log_header(none, file_bytes, unused, error);
+    return check_event_log_header(none, file_bytes, unused, unused_version, error);
   }
 
   int flags = MAP_PRIVATE;
@@ -72,14 +73,15 @@ bool MappedEventLog::open(const std::string& path, std::string* error) {
   if (base == MAP_FAILED) return fail("mmap failed for " + path);
 
   std::uint64_t n = 0;
-  if (!check_event_log_header(base, file_bytes, n, error)) {
+  unsigned version = 0;
+  if (!check_event_log_header(base, file_bytes, n, version, error)) {
     (void)munmap(base, length);
     return false;
   }
   // Records start at offset 16 of a page-aligned mapping, so they are aligned for Event.
   const auto* first = reinterpret_cast<const Event*>(static_cast<const char*>(base) + kEventLogHeaderBytes);
   const std::span<const Event> events(first, static_cast<std::size_t>(n));
-  if (const std::size_t bad = first_invalid_event(events); bad != events.size()) {
+  if (const std::size_t bad = first_invalid_event(events, version); bad != events.size()) {
     (void)munmap(base, length);
     return fail("record " + std::to_string(bad) + " has an invalid type/side/order-type or reserved byte");
   }

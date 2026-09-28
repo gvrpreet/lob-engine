@@ -20,6 +20,9 @@
 namespace {
 const std::string kGolden = std::string(LOB_TEST_DATA_DIR) + "/golden_2000_seed7.bin";
 constexpr std::uint64_t kGoldenChecksum = 0xc46a281df7e17679ULL;
+// Format v2 golden (gen_events ... 2000 7 15): 1343 New, 339 Cancel, 231 Modify, 87 Reduce.
+const std::string kGoldenV2 = std::string(LOB_TEST_DATA_DIR) + "/golden_v2_2000_seed7.bin";
+constexpr std::uint64_t kGoldenV2Checksum = 0x91319d83ac94152cULL;
 
 std::vector<char> file_bytes(const std::string& path) {
   std::ifstream in(path, std::ios::binary);
@@ -77,6 +80,58 @@ TEST(generator_still_produces_golden_log) {
   std::remove(path.c_str());
 }
 
+TEST(golden_v2_log_replays_to_known_results_on_every_variant) {
+  std::vector<replay::Event> ev;
+  CHECK(replay::read_events(kGoldenV2, ev));
+  CHECK(ev.size() == 2000);
+
+  const auto st = replay::replay(ev);
+  CHECK(st.checksum == kGoldenV2Checksum);
+  CHECK(st.trades == 489 && st.volume == 12'124);
+  CHECK(st.rejected == 0 && st.cancel_misses == 98 && st.final_orders == 593);
+  CHECK(st.modify_misses == 68 && st.reduce_misses == 21);
+
+  for (const auto& variant : {replay::replay_naive(ev), replay::replay_order48(ev),
+                              replay::replay_order64(ev), replay::replay_hotcold(ev),
+                              replay::replay_dense(ev), replay::replay_sorted(ev),
+                              replay::replay_hugepages(ev)}) {
+    CHECK(variant.checksum == kGoldenV2Checksum);
+    CHECK(variant.trades == st.trades && variant.volume == st.volume);
+    CHECK(variant.modify_misses == st.modify_misses && variant.reduce_misses == st.reduce_misses);
+  }
+
+  replay::MappedEventLog mapped;
+  CHECK(mapped.open(kGoldenV2));
+  CHECK(replay::replay(mapped.events()).checksum == kGoldenV2Checksum);
+}
+
+TEST(generator_still_produces_golden_v2_log) {
+  const auto ev = replay::generate_events(2000, 7, 15);
+  const std::string path = temp_path("lob_regen_events_v2.bin");
+  CHECK(replay::write_events(path, ev));
+  CHECK(file_bytes(path) == file_bytes(kGoldenV2));
+  std::remove(path.c_str());
+}
+
+TEST(v1_log_rejects_v2_event_types) {
+  auto v1 = file_bytes(kGolden);
+  const std::size_t rec = replay::kEventLogHeaderBytes + 5 * sizeof(replay::Event);
+  v1[rec + offsetof(replay::Event, type)] = static_cast<char>(replay::EventType::Modify);
+  CHECK(rejected(v1));  // Modify needs the v2 magic
+
+  auto v2 = v1;
+  v2[7] = '2';  // same bytes under the v2 magic are valid
+  const std::string path = temp_path("lob_v2_events.bin");
+  write_bytes(path, v2);
+  std::vector<replay::Event> out;
+  CHECK(replay::read_events(path, out) && out.size() == 2000);
+  std::remove(path.c_str());
+
+  auto bad_v2 = file_bytes(kGoldenV2);
+  bad_v2[rec + offsetof(replay::Event, type)] = 4;
+  CHECK(rejected(bad_v2));
+}
+
 TEST(read_events_rejects_malformed_logs) {
   const std::vector<char> good = file_bytes(kGolden);
   CHECK(good.size() == replay::kEventLogHeaderBytes + 2000 * sizeof(replay::Event));
@@ -90,7 +145,7 @@ TEST(read_events_rejects_malformed_logs) {
   CHECK(rejected(trailing));
 
   auto bad_magic = good;
-  bad_magic[7] = '2';
+  bad_magic[7] = '9';  // '2' is now the valid v2 magic
   CHECK(rejected(bad_magic));
 
   auto huge_count = good;  // header claims far more records than the file holds: no giant allocation
