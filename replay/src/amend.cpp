@@ -23,7 +23,7 @@ template void apply_amend(lob::NaiveOrderBook&, const Event&, ReplayStats&, IStr
 template void apply_amend(lob::OrderBook48&, const Event&, ReplayStats&, IStrategy*);
 template void apply_amend(lob::OrderBook64&, const Event&, ReplayStats&, IStrategy*);
 template void apply_amend(lob::HotColdOrderBook&, const Event&, ReplayStats&, IStrategy*);
-template void apply_amend(lob::DenseOrderBook&, const Event&, ReplayStats&, IStrategy*);
+template void apply_amend(lob::TreeOrderBook&, const Event&, ReplayStats&, IStrategy*);
 template void apply_amend(lob::SortedOrderBook&, const Event&, ReplayStats&, IStrategy*);
 template void apply_amend(lob::HugePageOrderBook&, const Event&, ReplayStats&, IStrategy*);
 

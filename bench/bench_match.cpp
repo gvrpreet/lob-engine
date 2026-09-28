@@ -32,7 +32,7 @@ int main(int argc, char** argv) {
   (void)replay::replay_order48(ev, warm);
   (void)replay::replay_order64(ev, warm);
   (void)replay::replay_hotcold(ev, warm);
-  (void)replay::replay_dense(ev, warm);
+  (void)replay::replay_tree(ev, warm);
   (void)replay::replay_sorted(ev, warm);
   (void)replay::replay_hugepages(ev, warm);
 
@@ -45,7 +45,7 @@ int main(int argc, char** argv) {
       case 2: return replay::replay_order48(ev, warm);
       case 3: return replay::replay_order64(ev, warm);
       case 4: return replay::replay_hotcold(ev, warm);
-      case 5: return replay::replay_dense(ev, warm);
+      case 5: return replay::replay_tree(ev, warm);
       case 6: return replay::replay_sorted(ev, warm);
       default: return replay::replay_hugepages(ev, warm);
     }
@@ -66,7 +66,7 @@ int main(int argc, char** argv) {
     }
   }
   constexpr std::array<const char*, 8> labels{"Order 32B", "new/delete", "Order 48B",
-                                               "Order 64B", "hot/cold", "dense levels",
+                                               "Order 64B", "hot/cold", "tree levels",
                                                "sorted levels", "32B huge"};
   std::printf("events=%zu requested_levels=%zu trade_percent=%u runs=7 checksum=%016llx trades=%llu final_levels=%llu peak_levels=%llu\n",
               n, active_levels, trade_percent,

@@ -20,11 +20,13 @@ struct NullSink {
 
 // Price-time priority limit order book. Single-threaded by design.
 //
-// PHASE 1 BASELINE (see docs/00-roadmap.md):
-//   price levels : TreePriceLevels     -> dense bitmap experiment available (phase 3b)
+// Defaults (see docs/00-roadmap.md):
+//   price levels : DensePriceLevels    -> re-centring bitmap band + overflow map. Default since
+//                                         2026-09-28: 10-22% faster than the tree on real ITCH
+//                                         flow (TreePriceLevels stays available: TreeOrderBook)
 //   id lookup    : FlatOrderIndex      -> open-addressing table (phase 3.1)
 //   order storage: OrderPool (slab)    -> already cache-aware (phase 2)
-template <class Pool, template <class> class LevelIndex = TreePriceLevels,
+template <class Pool, template <class> class LevelIndex = DensePriceLevels,
           class IdIndex = FlatOrderIndex>
 class BasicOrderBook {
  public:
@@ -213,10 +215,11 @@ using NaiveOrderBook = BasicOrderBook<HeapOrderPool>;
 using OrderBook48 = BasicOrderBook<OrderPool48>;
 using OrderBook64 = BasicOrderBook<OrderPool64>;
 using HotColdOrderBook = BasicOrderBook<HotColdOrderPool>;
-using DenseOrderBook = BasicOrderBook<OrderPool, DensePriceLevels>;
+using DenseOrderBook = OrderBook;  // the default since 2026-09-28
+using TreeOrderBook = BasicOrderBook<OrderPool, TreePriceLevels>;  // the default until 2026-09-28
 using SortedOrderBook = BasicOrderBook<OrderPool, SortedPriceLevels>;
 // Phase 2(d): default book with the pool and id index on MADV_HUGEPAGE storage.
 using HugePageOrderBook =
-    BasicOrderBook<HugePageOrderPool, TreePriceLevels, BasicFlatOrderIndex<HugePageAllocator>>;
+    BasicOrderBook<HugePageOrderPool, DensePriceLevels, BasicFlatOrderIndex<HugePageAllocator>>;
 
 }  // namespace lob

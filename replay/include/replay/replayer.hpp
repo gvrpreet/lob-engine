@@ -45,7 +45,8 @@ ReplayStats replay_naive(std::span<const Event> events, const ReplayConfig& cfg 
 ReplayStats replay_order48(std::span<const Event> events, const ReplayConfig& cfg = {});
 ReplayStats replay_order64(std::span<const Event> events, const ReplayConfig& cfg = {});
 ReplayStats replay_hotcold(std::span<const Event> events, const ReplayConfig& cfg = {});
-ReplayStats replay_dense(std::span<const Event> events, const ReplayConfig& cfg = {});
+// The default book uses dense (re-centring) levels; replay_tree uses the std::map level store.
+ReplayStats replay_tree(std::span<const Event> events, const ReplayConfig& cfg = {});
 ReplayStats replay_sorted(std::span<const Event> events, const ReplayConfig& cfg = {});
 ReplayStats replay_hugepages(std::span<const Event> events, const ReplayConfig& cfg = {});
 

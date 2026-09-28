@@ -118,8 +118,8 @@ ReplayStats replay_hotcold(std::span<const Event> events, const ReplayConfig& cf
   return replay_with_book<lob::HotColdOrderBook>(events, cfg, nullptr);
 }
 
-ReplayStats replay_dense(std::span<const Event> events, const ReplayConfig& cfg) {
-  return replay_with_book<lob::DenseOrderBook>(events, cfg, nullptr);
+ReplayStats replay_tree(std::span<const Event> events, const ReplayConfig& cfg) {
+  return replay_with_book<lob::TreeOrderBook>(events, cfg, nullptr);
 }
 
 ReplayStats replay_sorted(std::span<const Event> events, const ReplayConfig& cfg) {

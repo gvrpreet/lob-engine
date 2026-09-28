@@ -105,10 +105,10 @@ TEST(latency_measurement_does_not_change_replay) {
     cfg.measure_latency = true;
     cfg.latency_timer = timer;
     const auto timed = replay::replay(ev, cfg);
-    const auto dense = replay::replay_dense(ev, cfg);
-    CHECK(timed.checksum == plain.checksum && dense.checksum == plain.checksum);
+    const auto tree = replay::replay_tree(ev, cfg);
+    CHECK(timed.checksum == plain.checksum && tree.checksum == plain.checksum);
     CHECK(timed.trades == plain.trades && timed.volume == plain.volume);
-    CHECK(timed.latency.count() == ev.size() && dense.latency.count() == ev.size());
+    CHECK(timed.latency.count() == ev.size() && tree.latency.count() == ev.size());
     CHECK(timed.latency_percentile(50) <= timed.latency_percentile(99));
     CHECK(timed.latency_percentile(99) <= timed.latency_percentile(99.9));
   }

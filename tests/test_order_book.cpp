@@ -188,10 +188,11 @@ TEST(dense_price_levels_anchor_band_on_first_price) {
   std::vector<Price> ordered;
   asks.for_each_sorted([&](Price price, const PriceLevel&) { ordered.push_back(price); });
   CHECK((ordered == std::vector<Price>{42, 3'235'199, 3'235'200, 3'235'250, 3'235'300, 3'235'301}));
+  CHECK(asks.recentres() == 2);  // 3'235'199 and then 42 each became the best from outside the band
   asks.erase(42);
   CHECK(asks.best_price() == 3'235'199);
   asks.erase(3'235'199);
-  CHECK(asks.best_price() == 3'235'200);  // the band's lowest slot
+  CHECK(asks.best_price() == 3'235'200);
 
   // Anchoring at the extremes of Price clamps the band instead of overflowing.
   DensePriceLevels<std::greater<Price>> top(101), bottom(101);
@@ -201,8 +202,29 @@ TEST(dense_price_levels_anchor_band_on_first_price) {
   CHECK(bottom.best_price() == std::numeric_limits<Price>::min());
 }
 
+TEST(dense_price_levels_recentre_when_touch_leaves_band) {
+  DensePriceLevels<std::greater<Price>> bids(101);  // follows the market
+  bids.get_or_create(10'000).total_qty = 1;        // anchors the band on 9'950..10'050
+  bids.get_or_create(9'990).total_qty = 2;
+  bids.get_or_create(9'000).total_qty = 3;         // outside but worse: overflow, no rebuild
+  CHECK(bids.recentres() == 0 && bids.best_price() == 10'000);
+  bids.get_or_create(10'500).total_qty = 4;        // outside and better: the touch left the band
+  CHECK(bids.recentres() == 1 && bids.best_price() == 10'500 && bids.size() == 4);
+  std::vector<std::pair<Price, Qty>> seen;
+  bids.for_each_sorted([&](Price p, const PriceLevel& l) { seen.emplace_back(p, l.total_qty); });
+  CHECK((seen == std::vector<std::pair<Price, Qty>>{{10'500, 4}, {10'000, 1}, {9'990, 2}, {9'000, 3}}));
+  CHECK(bids.find(9'990) != nullptr && bids.find(9'990)->total_qty == 2);  // moved to overflow intact
+  bids.erase(10'500);
+  CHECK(bids.best_price() == 10'000 && bids.size() == 3);
+
+  DensePriceLevels<std::greater<Price>> pinned(9'950, 101);  // explicit base: never re-centres
+  pinned.get_or_create(10'000).total_qty = 1;
+  pinned.get_or_create(10'500).total_qty = 1;
+  CHECK(pinned.recentres() == 0 && pinned.best_price() == 10'500);
+}
+
 TEST(dense_order_book_matches_tree_at_real_price_scale) {
-  OrderBook tree(64);
+  TreeOrderBook tree(64);
   DenseOrderBook dense(64);
   std::vector<Trade> a, b;
   for (OrderId id = 1; id <= 40; ++id) {
@@ -219,7 +241,7 @@ TEST(dense_order_book_matches_tree_at_real_price_scale) {
 }
 
 TEST(dense_order_book_matches_tree_through_overflow_prices) {
-  OrderBook tree(32);
+  TreeOrderBook tree(32);
   DenseOrderBook dense(32);
   std::vector<Trade> tree_trades;
   std::vector<Trade> dense_trades;
@@ -268,7 +290,7 @@ TEST(sorted_price_levels_keep_best_at_back_for_bids_and_asks) {
 }
 
 TEST(sorted_order_book_matches_tree_fills_and_cancels) {
-  OrderBook tree(32);
+  TreeOrderBook tree(32);
   SortedOrderBook sorted(32);
   std::vector<Trade> tree_trades;
   std::vector<Trade> sorted_trades;
@@ -435,7 +457,7 @@ TEST(modify_requeue_works_with_full_pool) {
 }
 
 TEST(modify_and_reduce_match_across_variants) {
-  OrderBook tree(64);
+  TreeOrderBook tree(64);
   DenseOrderBook dense(64);
   SortedOrderBook sorted(64);
   HotColdOrderBook hotcold(64);

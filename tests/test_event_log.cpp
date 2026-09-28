@@ -65,7 +65,7 @@ TEST(golden_log_replays_to_known_results_on_every_variant) {
 
   for (const auto& variant : {replay::replay_naive(ev), replay::replay_order48(ev),
                               replay::replay_order64(ev), replay::replay_hotcold(ev),
-                              replay::replay_dense(ev), replay::replay_sorted(ev),
+                              replay::replay_tree(ev), replay::replay_sorted(ev),
                               replay::replay_hugepages(ev)}) {
     CHECK(variant.checksum == kGoldenChecksum);
     CHECK(variant.trades == st.trades && variant.volume == st.volume);
@@ -93,7 +93,7 @@ TEST(golden_v2_log_replays_to_known_results_on_every_variant) {
 
   for (const auto& variant : {replay::replay_naive(ev), replay::replay_order48(ev),
                               replay::replay_order64(ev), replay::replay_hotcold(ev),
-                              replay::replay_dense(ev), replay::replay_sorted(ev),
+                              replay::replay_tree(ev), replay::replay_sorted(ev),
                               replay::replay_hugepages(ev)}) {
     CHECK(variant.checksum == kGoldenV2Checksum);
     CHECK(variant.trades == st.trades && variant.volume == st.volume);

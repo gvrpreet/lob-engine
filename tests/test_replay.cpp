@@ -70,8 +70,8 @@ TEST(huge_page_storage_matches_default_replay) {
 
 TEST(dense_price_levels_match_tree_replay) {
   const auto ev = replay::generate_events(150'000, 41);
-  const auto tree = replay::replay(ev);
-  const auto dense = replay::replay_dense(ev);
+  const auto tree = replay::replay_tree(ev);
+  const auto dense = replay::replay(ev);  // dense levels are the default
   CHECK(tree.checksum == dense.checksum);
   CHECK(tree.trades == dense.trades && tree.volume == dense.volume);
   CHECK(tree.rejected == dense.rejected && tree.cancel_misses == dense.cancel_misses);
@@ -80,7 +80,7 @@ TEST(dense_price_levels_match_tree_replay) {
 
 TEST(sorted_price_levels_match_tree_replay) {
   const auto ev = replay::generate_events(150'000, 43);
-  const auto tree = replay::replay(ev);
+  const auto tree = replay::replay_tree(ev);
   const auto sorted = replay::replay_sorted(ev);
   CHECK(tree.checksum == sorted.checksum);
   CHECK(tree.trades == sorted.trades && tree.volume == sorted.volume);
@@ -93,8 +93,8 @@ TEST(book_shape_metrics_are_opt_in_and_match_across_level_stores) {
   const auto default_stats = replay::replay(ev);
   replay::ReplayConfig cfg;
   cfg.measure_book_shape = true;
-  const auto tree = replay::replay(ev, cfg);
-  const auto dense = replay::replay_dense(ev, cfg);
+  const auto tree = replay::replay_tree(ev, cfg);
+  const auto dense = replay::replay(ev, cfg);
   const auto sorted = replay::replay_sorted(ev, cfg);
 
   CHECK(default_stats.final_levels == 0 && default_stats.peak_levels == 0);
@@ -112,8 +112,8 @@ TEST(controlled_depth_events_hold_requested_level_count) {
 
     replay::ReplayConfig cfg;
     cfg.measure_book_shape = true;
-    const auto tree = replay::replay(events, cfg);
-    const auto dense = replay::replay_dense(events, cfg);
+    const auto tree = replay::replay_tree(events, cfg);
+    const auto dense = replay::replay(events, cfg);
     const auto sorted = replay::replay_sorted(events, cfg);
     CHECK(tree.final_levels == depth && tree.peak_levels == depth);
     CHECK(tree.checksum == dense.checksum && tree.checksum == sorted.checksum);
@@ -131,8 +131,8 @@ TEST(trade_enabled_controlled_depth_preserves_levels_across_backends) {
 
     replay::ReplayConfig cfg;
     cfg.measure_book_shape = true;
-    const auto tree = replay::replay(events, cfg);
-    const auto dense = replay::replay_dense(events, cfg);
+    const auto tree = replay::replay_tree(events, cfg);
+    const auto dense = replay::replay(events, cfg);
     const auto sorted = replay::replay_sorted(events, cfg);
     CHECK(tree.trades > 0 && tree.trades == dense.trades && tree.trades == sorted.trades);
     CHECK(tree.final_levels == depth && tree.peak_levels == depth);

@@ -58,13 +58,16 @@ class TreePriceLevels {
 };
 
 // Dense band of `span` consecutive prices with an occupancy bitmap; prices outside the band
-// remain valid through the ordered overflow map. By default the band is centred on the first
-// price ever stored (so it follows the instrument: the original fixed 9,000-11,000 band only
-// fitted the synthetic generator, and every real ITCH price overflowed). Passing `base` pins it.
+// remain valid through the ordered overflow map. By default the band follows the market: it is
+// centred on the first price stored, and re-centred on the new best price whenever the touch
+// leaves it (a new level outside the band that becomes this side's best). The original fixed
+// 9,000-11,000 band only fitted the synthetic generator, and every real ITCH price overflowed.
+// Passing `base` pins the band (no re-centring).
 template <class Compare>
 class DensePriceLevels {
  public:
-  explicit DensePriceLevels(std::size_t span = 2'001) : levels_(span), occupied_((span + 63) / 64) {
+  explicit DensePriceLevels(std::size_t span = 2'001)
+      : follow_(span != 0), levels_(span), occupied_((span + 63) / 64) {
     check_span(span);
   }
   DensePriceLevels(Price base, std::size_t span)
@@ -77,6 +80,7 @@ class DensePriceLevels {
 
   bool empty() const noexcept { return size_ == 0; }
   std::size_t size() const noexcept { return size_; }
+  std::size_t recentres() const noexcept { return recentres_; }  // band rebuilds so far
 
   PriceLevel& get_or_create(Price price) {
     if (!anchored_) anchor(price);
@@ -89,10 +93,7 @@ class DensePriceLevels {
       }
       return levels_[*index];
     }
-
-    auto [it, inserted] = overflow_.try_emplace(price);
-    if (inserted) ++size_;
-    return it->second;
+    return get_or_create_outside(price);
   }
 
   PriceLevel* find(Price price) noexcept {
@@ -187,6 +188,55 @@ class DensePriceLevels {
     anchored_ = true;
   }
 
+  // Out of line on purpose: prices outside the band are rare (4-15% of new levels on ITCH), and
+  // inlining this path (map insert, best-price scan, rebuild) into get_or_create pushed the flat
+  // index and get_or_create itself out of the replay loop once dense became the default
+  // (+37% instructions/event on the v1 1M log).
+  [[gnu::noinline]] PriceLevel& get_or_create_outside(Price price) {
+    if (follow_ && becomes_best(price)) {
+      // The touch has left the band: rebuild it around the new best price. Callers only create
+      // levels outside matching, so no PriceLevel pointer is held across the move.
+      recentre(price);
+      return get_or_create(price);  // now inside the band (anchor keeps it in range)
+    }
+    auto [it, inserted] = overflow_.try_emplace(price);
+    if (inserted) ++size_;
+    return it->second;
+  }
+
+  // Would a new level at `price` be strictly better than every level on this side?
+  bool becomes_best(Price price) const noexcept {
+    const auto best = best_price();
+    return !best || Compare{}(price, *best);
+  }
+
+  // Move every level (dense and overflow) into a band centred on `centre`. O(levels); runs only
+  // when the touch leaves the band, i.e. after the market has moved by about span / 2 ticks.
+  [[gnu::noinline, gnu::cold]] void recentre(Price centre) {
+    std::vector<std::pair<Price, PriceLevel>> moved;
+    moved.reserve(size_);
+    for (std::size_t word = 0; word < occupied_.size(); ++word) {
+      for (std::uint64_t bits = occupied_[word]; bits != 0; bits &= bits - 1) {
+        const std::size_t index = word * 64 + static_cast<std::size_t>(std::countr_zero(bits));
+        moved.emplace_back(price_at(index), levels_[index]);
+        levels_[index] = PriceLevel{};
+      }
+      occupied_[word] = 0;
+    }
+    for (const auto& [price, level] : overflow_) moved.emplace_back(price, level);
+    overflow_.clear();
+    anchor(centre);
+    ++recentres_;
+    for (const auto& [price, level] : moved) {
+      if (const auto index = dense_index(price)) {
+        occupied_[*index / 64] |= std::uint64_t{1} << (*index % 64);
+        levels_[*index] = level;
+      } else {
+        overflow_.emplace(price, level);
+      }
+    }
+  }
+
   std::optional<std::size_t> dense_index(Price price) const noexcept {
     if (price < base_) return std::nullopt;  // before anchoring the bitmap is empty: all misses
     const std::uint64_t offset = static_cast<std::uint64_t>(price) -
@@ -244,6 +294,8 @@ class DensePriceLevels {
 
   Price base_ = 0;
   bool anchored_ = false;
+  bool follow_ = false;  // re-centre when the touch leaves the band (default-constructed only)
+  std::size_t recentres_ = 0;
   std::vector<PriceLevel> levels_;
   std::vector<std::uint64_t> occupied_;
   std::map<Price, PriceLevel, Compare> overflow_;

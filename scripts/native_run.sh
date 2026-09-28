@@ -280,7 +280,7 @@ main() {
         perf_variant "$n" order48 --order-size 48
         perf_variant "$n" order64 --order-size 64
         perf_variant "$n" hotcold --hot-cold
-        perf_variant "$n" dense --dense
+        perf_variant "$n" tree --tree              # std::map levels (dense is the default since 2026-09-28)
         perf_variant "$n" sorted --sorted
         perf_variant "$n" hugepages --huge-pages   # pool + index MADV_HUGEPAGE under THP=madvise
         perf_variant "$n" mmap                     # default book, mmap reader instead of --read

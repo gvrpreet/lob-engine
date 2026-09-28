@@ -1,4 +1,5 @@
-// usage: replay_cli <events.bin> [--read] [--latency] [--tsc] [--huge-pages] [--naive] [--no-strategy] [--order-size 48|64] [--hot-cold] [--dense] [--sorted]
+// usage: replay_cli <events.bin> [--read] [--latency] [--tsc] [--huge-pages] [--naive] [--no-strategy] [--order-size 48|64] [--hot-cold] [--tree] [--sorted]
+//        (the default book uses dense levels; --tree selects the std::map level store)
 //        replay_cli <events.bin> [--read] --strategy mm [--order-latency <ns>]   (trading replay, default book)
 //        replay_cli <events.bin> --stream [--window <events>] [--no-strategy]    (bounded memory, default book)
 //        replay_cli <events.bin> [--read] --paced <speed> [--no-strategy]        (timestamp-paced, default book)
@@ -21,7 +22,7 @@
 int main(int argc, char** argv) {
   if (argc < 2) {
     std::fprintf(stderr,
-                 "usage: %s <events.bin> [--read] [--latency] [--tsc] [--huge-pages] [--naive] [--no-strategy] [--order-size 48|64] [--hot-cold] [--dense] [--sorted]\n"
+                 "usage: %s <events.bin> [--read] [--latency] [--tsc] [--huge-pages] [--naive] [--no-strategy] [--order-size 48|64] [--hot-cold] [--tree] [--sorted]\n"
                  "       %s <events.bin> [--read] --strategy mm [--order-latency <ns>]\n"
                  "       %s <events.bin> --stream [--window <events>] [--no-strategy]\n"
                  "       %s <events.bin> [--read] --paced <speed> [--no-strategy]\n",
@@ -97,7 +98,7 @@ int main(int argc, char** argv) {
   bool naive = false;
   bool use_strategy = true;
   bool hot_cold = false;
-  bool dense = false;
+  bool tree = false;  // std::map level store (dense levels are the default)
   bool sorted = false;
   bool huge = false;
   unsigned order_size = 32;
@@ -131,7 +132,11 @@ int main(int argc, char** argv) {
     else if (std::strcmp(argv[i], "--naive") == 0) naive = true;
     else if (std::strcmp(argv[i], "--no-strategy") == 0) use_strategy = false;
     else if (std::strcmp(argv[i], "--hot-cold") == 0) hot_cold = true;
-    else if (std::strcmp(argv[i], "--dense") == 0) dense = true;
+    else if (std::strcmp(argv[i], "--tree") == 0) tree = true;
+    else if (std::strcmp(argv[i], "--dense") == 0) {
+      std::fprintf(stderr, "--dense: dense levels are the default now; use --tree for the std::map store\n");
+      return 2;
+    }
     else if (std::strcmp(argv[i], "--sorted") == 0) sorted = true;
     else if (std::strcmp(argv[i], "--order-size") == 0 && i + 1 < argc) {
       order_size = static_cast<unsigned>(std::strtoul(argv[++i], nullptr, 10));
@@ -146,7 +151,7 @@ int main(int argc, char** argv) {
     }
   }
   const int variants =
-      int{naive} + int{hot_cold} + int{order_size != 32} + int{dense} + int{sorted} + int{huge};
+      int{naive} + int{hot_cold} + int{order_size != 32} + int{tree} + int{sorted} + int{huge};
   if (latency_given && !market_maker) {
     std::fprintf(stderr, "--order-latency needs --strategy mm\n");
     return 2;
@@ -224,7 +229,7 @@ int main(int argc, char** argv) {
   replay::VwapTracker vwap;
   const auto st = naive ? replay::replay_naive(ev, cfg)
                         : hot_cold ? replay::replay_hotcold(ev, cfg)
-                        : dense ? replay::replay_dense(ev, cfg)
+                        : tree ? replay::replay_tree(ev, cfg)
                         : sorted ? replay::replay_sorted(ev, cfg)
                         : huge ? replay::replay_hugepages(ev, cfg)
                         : order_size == 48 ? replay::replay_order48(ev, cfg)
