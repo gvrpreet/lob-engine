@@ -1,0 +1,10 @@
+---
+# Phase 7: static analysis in CI (scripts/tidy.sh). Focused on bugs and performance, not style.
+Checks: >
+  bugprone-*,
+  performance-*,
+  clang-analyzer-*,
+  -bugprone-easily-swappable-parameters
+WarningsAsErrors: '*'
+HeaderFilterRegex: '(include|replay)/.*'
+...

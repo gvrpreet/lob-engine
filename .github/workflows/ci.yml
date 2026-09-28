@@ -10,3 +10,19 @@ jobs:
       - run: cmake --preset ${{ matrix.preset }} -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
       - run: cmake --build build/${{ matrix.preset }} -j
       - run: ctest --test-dir build/${{ matrix.preset }} --output-on-failure
+
+  # Phase 7: static analysis (checks in .clang-tidy; any finding fails the job).
+  tidy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y clang-tidy
+      - run: scripts/tidy.sh
+
+  # Phase 7: short libFuzzer run (dense + tree books vs the naive oracle, ASan/UBSan).
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y clang
+      - run: scripts/fuzz.sh 60 2

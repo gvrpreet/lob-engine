@@ -75,7 +75,7 @@ bool read_events(const std::string& path, std::vector<Event>& out, std::string* 
   if (std::fseek(f.get(), 0, SEEK_END) != 0) return fail(error, "cannot seek");
   const long end = std::ftell(f.get());
   if (end < 0) return fail(error, "cannot determine file size");
-  std::rewind(f.get());
+  if (std::fseek(f.get(), 0, SEEK_SET) != 0) return fail(error, "cannot seek");
   char header[kEventLogHeaderBytes] = {};
   if (std::fread(header, 1, sizeof header, f.get()) != sizeof header &&
       static_cast<std::uint64_t>(end) >= kEventLogHeaderBytes)

@@ -36,7 +36,7 @@ bool EventLogStream::open(const std::string& path, std::string* error) {
   if (std::fseek(f, 0, SEEK_END) != 0) return fail(error, "cannot seek");
   const long end = std::ftell(f);
   if (end < 0) return fail(error, "cannot determine file size");
-  std::rewind(f);
+  if (std::fseek(f, 0, SEEK_SET) != 0) return fail(error, "cannot seek");
   char header[kEventLogHeaderBytes] = {};
   if (std::fread(header, 1, sizeof header, f) != sizeof header &&
       static_cast<std::uint64_t>(end) >= kEventLogHeaderBytes)
