@@ -67,7 +67,12 @@ events.bin ─► apply due gateway actions ─► apply feed event ─► deliv
   - Any other change (new price, or a higher qty): the order is removed and re-entered as a limit order at the back of its new level. It trades first if the new price crosses, and appears as the taker in those trades.
   - Unknown id: a miss. A qty of 0 is rejected and leaves the order unchanged.
 - **Reduce** takes `qty` shares off a resting order and keeps its position. If `qty` ≥ what is left, the order is removed. An unknown id is a miss.
-- ITCH mapping (5d): an ITCH replace (old ref → new ref) becomes a Modify of the same engine id; the converter maps references to ids. Partial cancels and executions of resting orders become Reduce.
+- ITCH mapping (5d, `replay/itch.hpp`):
+  - The engine id is the order's original ITCH reference; the converter maps later references to it.
+  - A/F become New. E/C (executions) and X (partial cancels) become Reduce. D becomes Cancel.
+  - An ITCH replace U always loses priority. It becomes a Modify when the engine would also re-queue (new price or more shares), and Cancel + New with the same id otherwise.
+  - Prices stay in ITCH units (1/10000 $); timestamps are ns since midnight.
+  - Consequence for strategies: real aggressors never reach the engine, so a strategy's resting order is filled only when a displayed Add crosses it. There is no queue-position model yet (see the Phase 5(d) note).
 
 **Golden log:** `tests/data/golden_2000_seed7.bin` (`gen_events … 2000 7`) is committed together with its expected results: checksum `c46a281df7e17679`, 576 trades, volume 14,366, 109 cancel misses, 687 resting orders. Every storage variant must reproduce them. A separate test checks that the generator still produces the file byte-for-byte, so a generator change and a matching-behaviour change fail different tests.
 
