@@ -32,4 +32,13 @@ enum class AddResult : std::uint8_t {
   Discarded        // market order: unfilled remainder dropped (never rests)
 };
 
+enum class ModifyResult : std::uint8_t {
+  NotFound,        // id is not resting
+  Rejected,        // zero qty; the order is left unchanged
+  Amended,         // same price, qty lowered or unchanged: queue position kept
+  Rested,          // re-queued at the back of its (new) level, no fills
+  PartiallyRested, // re-queued after some fills
+  Filled           // the re-entered order traded away completely
+};
+
 }  // namespace lob

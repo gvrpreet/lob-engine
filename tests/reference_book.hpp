@@ -45,6 +45,37 @@ class RefBook {
     return true;
   }
 
+  // Partial cancel: keeps the order's seq (queue position) unless it removes the order.
+  bool reduce(lob::OrderId id, lob::Qty by) {
+    const int i = find(id);
+    if (i < 0) return false;
+    if (by >= orders_[i].qty) orders_.erase(orders_.begin() + i);
+    else orders_[i].qty -= by;
+    return true;
+  }
+
+  // Same price and qty not raised: amend in place (keeps seq). Otherwise: remove, then add again
+  // as a new limit order with the same id and side (new seq, may trade).
+  lob::ModifyResult modify(lob::OrderId id, lob::Price price, lob::Qty qty, lob::Timestamp ts,
+                           std::vector<lob::Trade>& out) {
+    using namespace lob;
+    const int i = find(id);
+    if (i < 0) return ModifyResult::NotFound;
+    if (qty == 0) return ModifyResult::Rejected;
+    if (price == orders_[i].price && qty <= orders_[i].qty) {
+      orders_[i].qty = qty;
+      return ModifyResult::Amended;
+    }
+    const Side side = orders_[i].side;
+    orders_.erase(orders_.begin() + i);
+    switch (add(id, side, OrderType::Limit, price, qty, ts, out)) {
+      case AddResult::Rested: return ModifyResult::Rested;
+      case AddResult::PartiallyRested: return ModifyResult::PartiallyRested;
+      case AddResult::Filled: return ModifyResult::Filled;
+      default: return ModifyResult::Rejected;
+    }
+  }
+
   std::size_t size() const { return orders_.size(); }
   std::optional<lob::Price> best(lob::Side s) const {
     std::optional<lob::Price> r;

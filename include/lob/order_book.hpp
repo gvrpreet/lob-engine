@@ -73,6 +73,39 @@ class BasicOrderBook {
     return true;
   }
 
+  // Partial cancel (ITCH 'X'): take `by` shares off a resting order, keeping its queue position.
+  // Removes the order when `by` covers what is left. Returns false if the id is not resting.
+  bool reduce(OrderId id, Qty by) {
+    Handle h;
+    if (!index_.find(id, h)) return false;
+    const Qty qty = pool_.qty(h);
+    if (by >= qty) return cancel(id);
+    set_resting_qty(h, qty - by);
+    return true;
+  }
+
+  // Change a resting order's price and/or qty; id and side stay. Lowering the qty at the same
+  // price keeps queue position. Any other change re-enters the order at the back of its new
+  // level, trading first if the new price crosses (trades name it as taker).
+  template <class Sink>
+  ModifyResult modify(OrderId id, Price price, Qty qty, Timestamp ts, Sink&& sink) {
+    Handle h;
+    if (!index_.find(id, h)) return ModifyResult::NotFound;
+    if (qty == 0) return ModifyResult::Rejected;
+    if (price == pool_.price(h) && qty <= pool_.qty(h)) {
+      set_resting_qty(h, qty);
+      return ModifyResult::Amended;
+    }
+    const Side side = pool_.side(h);
+    cancel(id);  // frees the id and a pool slot, so the add below cannot be rejected
+    switch (add(id, side, OrderType::Limit, price, qty, ts, sink)) {
+      case AddResult::Rested: return ModifyResult::Rested;
+      case AddResult::PartiallyRested: return ModifyResult::PartiallyRested;
+      case AddResult::Filled: return ModifyResult::Filled;
+      default: return ModifyResult::Rejected;  // unreachable
+    }
+  }
+
   // ---- read-only queries --------------------------------------------------
   std::optional<Price> best_bid() const {
     return bids_.best_price();
@@ -159,6 +192,14 @@ class BasicOrderBook {
     if (level == nullptr) return;
     level->unlink(pool_, h);
     if (level->empty()) book.erase(price);
+  }
+
+  // Lower a resting order's qty in place (qty <= current), keeping its level total in step.
+  void set_resting_qty(Handle h, Qty qty) {
+    const Price price = pool_.price(h);
+    PriceLevel* level = pool_.side(h) == Side::Buy ? bids_.find(price) : asks_.find(price);
+    if (level != nullptr) level->total_qty -= pool_.qty(h) - qty;
+    pool_.set_qty(h, qty);
   }
 
   Pool pool_;

@@ -282,6 +282,113 @@ TEST(filled_order_id_can_be_reused) {
   CHECK(b.contains(1) && b.order_count() == 1);
 }
 
+// ---- Phase 5(c): modify / reduce ---------------------------------------------------------
+
+TEST(reduce_keeps_queue_position) {
+  OrderBook b(64); Collector c;
+  b.add(1, Side::Sell, OrderType::Limit, 100, 10, 1, c);
+  b.add(2, Side::Sell, OrderType::Limit, 100, 10, 2, c);
+  CHECK(b.reduce(1, 7));
+  CHECK(b.volume_at(Side::Sell, 100) == 13);
+  b.add(3, Side::Buy, OrderType::Market, 0, 4, 3, c);
+  CHECK(c.v.size() == 2);
+  CHECK((c.v[0] == Trade{3, 1, 100, 3, 3}));  // still first in the queue, with 3 left
+  CHECK((c.v[1] == Trade{3, 2, 100, 1, 3}));
+}
+
+TEST(reduce_by_all_or_more_removes_order_and_level) {
+  OrderBook b(64);
+  b.add(1, Side::Buy, OrderType::Limit, 100, 5, 1, NullSink{});
+  CHECK(b.reduce(1, 9));
+  CHECK(!b.contains(1) && b.order_count() == 0 && b.level_count(Side::Buy) == 0);
+  CHECK(!b.reduce(1, 1));   // already gone
+  CHECK(!b.reduce(99, 1));  // never existed
+}
+
+TEST(modify_lower_qty_same_price_keeps_priority) {
+  OrderBook b(64); Collector c;
+  b.add(1, Side::Buy, OrderType::Limit, 100, 10, 1, c);
+  b.add(2, Side::Buy, OrderType::Limit, 100, 10, 2, c);
+  CHECK(b.modify(1, 100, 4, 3, c) == ModifyResult::Amended);
+  CHECK(b.modify(1, 100, 4, 4, c) == ModifyResult::Amended);  // unchanged: no-op, still first
+  CHECK(b.volume_at(Side::Buy, 100) == 14);
+  b.add(3, Side::Sell, OrderType::Market, 0, 5, 5, c);
+  CHECK(c.v.size() == 2 && c.v[0].maker == 1 && c.v[0].qty == 4 && c.v[1].maker == 2);
+}
+
+TEST(modify_higher_qty_loses_priority) {
+  OrderBook b(64); Collector c;
+  b.add(1, Side::Buy, OrderType::Limit, 100, 10, 1, c);
+  b.add(2, Side::Buy, OrderType::Limit, 100, 10, 2, c);
+  CHECK(b.modify(1, 100, 11, 3, c) == ModifyResult::Rested);
+  CHECK(b.volume_at(Side::Buy, 100) == 21);
+  b.add(3, Side::Sell, OrderType::Market, 0, 12, 4, c);
+  CHECK(c.v.size() == 2 && c.v[0].maker == 2 && c.v[0].qty == 10 && c.v[1].maker == 1);
+}
+
+TEST(modify_price_moves_level_and_loses_priority) {
+  OrderBook b(64); Collector c;
+  b.add(1, Side::Sell, OrderType::Limit, 101, 5, 1, c);
+  b.add(2, Side::Sell, OrderType::Limit, 100, 5, 2, c);
+  CHECK(b.modify(1, 100, 3, 3, c) == ModifyResult::Rested);  // lower qty, but new price
+  CHECK(b.level_count(Side::Sell) == 1 && b.volume_at(Side::Sell, 100) == 8);
+  CHECK(b.volume_at(Side::Sell, 101) == 0);
+  b.add(3, Side::Buy, OrderType::Market, 0, 6, 4, c);
+  CHECK(c.v.size() == 2 && c.v[0].maker == 2 && c.v[1].maker == 1);
+}
+
+TEST(modify_to_crossing_price_trades_at_maker_price) {
+  OrderBook b(64); Collector c;
+  b.add(1, Side::Sell, OrderType::Limit, 100, 4, 1, c);
+  b.add(2, Side::Buy, OrderType::Limit, 98, 10, 2, c);
+  CHECK(b.modify(2, 101, 10, 3, c) == ModifyResult::PartiallyRested);
+  CHECK(c.v.size() == 1);
+  CHECK((c.v[0] == Trade{2, 1, 100, 4, 3}));  // modified order is the taker
+  CHECK(b.volume_at(Side::Buy, 101) == 6 && b.volume_at(Side::Buy, 98) == 0);
+  CHECK(!b.best_ask().has_value());
+
+  b.add(3, Side::Sell, OrderType::Limit, 105, 6, 4, c);
+  CHECK(b.modify(2, 105, 6, 5, c) == ModifyResult::Filled);
+  CHECK(b.order_count() == 0);
+}
+
+TEST(modify_misses_and_rejects) {
+  OrderBook b(64); Collector c;
+  CHECK(b.modify(1, 100, 5, 1, c) == ModifyResult::NotFound);
+  b.add(1, Side::Buy, OrderType::Limit, 100, 5, 2, c);
+  CHECK(b.modify(1, 100, 0, 3, c) == ModifyResult::Rejected);
+  CHECK(b.contains(1) && b.volume_at(Side::Buy, 100) == 5);  // unchanged
+}
+
+TEST(modify_requeue_works_with_full_pool) {
+  OrderBook b(2);
+  b.add(1, Side::Buy, OrderType::Limit, 100, 5, 1, NullSink{});
+  b.add(2, Side::Buy, OrderType::Limit, 99, 5, 2, NullSink{});
+  CHECK(b.modify(2, 98, 7, 3, NullSink{}) == ModifyResult::Rested);
+  CHECK(b.order_count() == 2 && b.volume_at(Side::Buy, 98) == 7);
+}
+
+TEST(modify_and_reduce_match_across_variants) {
+  OrderBook tree(64);
+  DenseOrderBook dense(64);
+  SortedOrderBook sorted(64);
+  HotColdOrderBook hotcold(64);
+  const auto run = [](auto& book) {
+    for (OrderId id = 1; id <= 12; ++id)
+      book.add(id, id % 2 ? Side::Buy : Side::Sell, OrderType::Limit,
+               id % 2 ? 100 - Price(id % 4) : 101 + Price(id % 3), Qty(id + 2), id, NullSink{});
+    book.reduce(3, 2);
+    book.modify(5, 101, 4, 20, NullSink{});  // crosses
+    book.modify(4, 101, 3, 21, NullSink{});
+    book.reduce(8, 100);
+    return book.checksum();
+  };
+  const auto expected = run(tree);
+  CHECK(run(dense) == expected);
+  CHECK(run(sorted) == expected);
+  CHECK(run(hotcold) == expected);
+}
+
 TEST(huge_page_allocator_is_aligned_and_value_initializes) {
   std::vector<std::uint64_t, HugePageAllocator<std::uint64_t>> huge(1000);
   CHECK(reinterpret_cast<std::uintptr_t>(huge.data()) % kHugePageBytes == 0);
