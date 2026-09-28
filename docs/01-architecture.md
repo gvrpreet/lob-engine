@@ -30,6 +30,8 @@ gen_events / ITCH converter ─► events.bin ─► read_events / mmap ─► r
                                                                       └─► ReplayStats {events, trades, volume, latency, checksum}
 ```
 
+**Streaming replay (Phase 5b, `replay/event_stream.hpp`):** `EventLogStream` reads a log through a fixed window of records (default 2^20 = 32 MB). The header is checked against the file size at `open`, and each chunk is validated before any of its events are applied, with the same messages and absolute record indices as the other readers. `replay_stream` gives results identical to `replay()` at any window. Memory is the book plus the window, whatever the log size.
+
 **Trading replay (Phase 5f/g, `replay_trading`, `replay/src/trading.cpp`)** is a separate loop, so `replay()`'s hot path is untouched:
 ```
 events.bin ─► apply due gateway actions ─► apply feed event ─► deliver fills ─► ITradingStrategy::on_event(book, gateway)
@@ -96,7 +98,7 @@ events.bin ─► apply due gateway actions ─► apply feed event ─► deliv
 | 32-bit handles, not pointers | half the link size, slab locality | pool > 4B orders |
 | Intrusive doubly-linked FIFO | O(1) cancel & pop-front, no alloc | queue positions need random access |
 | `std::map` levels (baseline) | simple & correct first | Phase 3 → ladder + bitmap. Dense (band anchored on the first price) now wins by 14–22% on real ITCH flow in cents. Decision (2026-09-28): the tree stays default until a re-centring band has been measured; then dense becomes default |
-| `unordered_map` index (baseline) | simple & correct first | Phase 3 → flat table |
+| `unordered_map` index (baseline) | simple & correct first | Phase 3 → flat table. Since 2026-09-28 its home slot keeps blocks of 64 sequential ids together and Fibonacci-scatters the blocks. The identity hash collapsed after about 10M events (linear-probing clusters) |
 | Fixed-capacity pool | no allocation/latency spikes | grow-by-chunk if needed |
 | Single-threaded engine | no locks; determinism | scale by symbol sharding, not by threads per book |
 | Sink template param | zero-cost callback (inlined) | virtual sink only in cold paths |
