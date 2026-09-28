@@ -7,7 +7,7 @@ OrderId  u64        Price  i64 (ticks)     Qty  u32      Handle u32 (pool index)
 Order (32 B)  ─ id:u64 │ price:i64 │ qty:u32 │ prev:u32 │ next:u32 │ side:u8 │ pad
 PriceLevel    ─ head:Handle │ tail:Handle │ total_qty:u32 │ count:u32
 Trade         ─ taker:id │ maker:id │ price(maker's) │ qty │ ts
-Event (32 B)  ─ ts │ id │ price │ qty │ type{New,Cancel} │ side │ otype │ reserved
+Event (32 B)  ─ ts │ id │ price │ qty │ type{New,Cancel,Modify,Reduce} │ side │ otype │ reserved
 ```
 
 ## 2. Structure
@@ -30,20 +30,33 @@ gen_events / ITCH converter ─► events.bin ─► read_events / mmap ─► r
                                                                       └─► ReplayStats {events, trades, volume, latency, checksum}
 ```
 
-### Event log file format (v1, `LOBEVT01`)
+### Event log file format (v1 `LOBEVT01`, v2 `LOBEVT02`)
 | Offset | Size | Field |
 |---|---|---|
-| 0 | 8 | magic `LOBEVT01` (the last two characters are the version) |
+| 0 | 8 | magic `LOBEVT01` or `LOBEVT02` (the last two characters are the version) |
 | 8 | 8 | record count N, u64 |
-| 16 | 32·N | `Event` records: `ts` u64 @0, `id` u64 @8, `price` i64 @16, `qty` u32 @24, `type` u8 @28 (0 New, 1 Cancel), `side` u8 @29 (0 Buy, 1 Sell), `otype` u8 @30 (0 Limit, 1 Market), `reserved` u8 @31 = 0 |
+| 16 | 32·N | `Event` records: `ts` u64 @0, `id` u64 @8, `price` i64 @16, `qty` u32 @24, `type` u8 @28 (0 New, 1 Cancel; v2 adds 2 Modify, 3 Reduce), `side` u8 @29 (0 Buy, 1 Sell), `otype` u8 @30 (0 Limit, 1 Market), `reserved` u8 @31 = 0 |
 
 - All integers are little-endian. The reader `static_assert`s a little-endian host rather than swapping bytes.
-- A valid file is exactly `16 + 32·N` bytes. `read_events` checks the count against the file size *before* allocating, and rejects out-of-range enum bytes or a non-zero `reserved`, with a one-line reason.
+- A valid file is exactly `16 + 32·N` bytes. Both readers check the count against the file size *before* allocating. They reject enum bytes out of range for the file's version (a Modify in a v1 file is invalid) and a non-zero `reserved`, with the same one-line reason.
 - Cancel records leave `price`, `qty`, `side` and `otype` zero.
+- Modify records (v2): `id`, the new `price` and new `qty`, and `otype` Limit. `side` is ignored, because the order keeps its own side.
+- Reduce records (v2): `id`, plus `qty` = shares to remove. The other fields are zero.
+- v1 and v2 share the record layout; v2 only widens the `type` range. `write_events` writes `LOBEVT01` unless a Modify or Reduce is present, so logs without them stay byte-identical to earlier versions.
 - Records start at offset 16, so a page-aligned `mmap` of the file is aligned for `Event` (alignment 8).
-- Any layout change (e.g. a Replace event that needs a second id) gets a new magic, `LOBEVT02`, rather than silently reinterpreting v1 files.
+- Any change to the record layout gets a new magic (`LOBEVT03`) rather than silently reinterpreting older files.
+
+**Modify / Reduce semantics (Phase 5c, exchange priority rule):**
+- **Modify** keeps the id and side.
+  - Same price and qty ≤ current: amended in place, queue position kept (equal qty is a no-op).
+  - Any other change (new price, or a higher qty): the order is removed and re-entered as a limit order at the back of its new level. It trades first if the new price crosses, and appears as the taker in those trades.
+  - Unknown id: a miss. A qty of 0 is rejected and leaves the order unchanged.
+- **Reduce** takes `qty` shares off a resting order and keeps its position. If `qty` ≥ what is left, the order is removed. An unknown id is a miss.
+- ITCH mapping (5d): an ITCH replace (old ref → new ref) becomes a Modify of the same engine id; the converter maps references to ids. Partial cancels and executions of resting orders become Reduce.
 
 **Golden log:** `tests/data/golden_2000_seed7.bin` (`gen_events … 2000 7`) is committed together with its expected results: checksum `c46a281df7e17679`, 576 trades, volume 14,366, 109 cancel misses, 687 resting orders. Every storage variant must reproduce them. A separate test checks that the generator still produces the file byte-for-byte, so a generator change and a matching-behaviour change fail different tests.
+
+**Golden v2 log:** `tests/data/golden_v2_2000_seed7.bin` (`gen_events … 2000 7 15`, so 15% Modify/Reduce: 1343 New, 339 Cancel, 231 Modify, 87 Reduce). Expected: checksum `91319d83ac94152c`, 489 trades, volume 12,124, 98 cancel / 68 modify / 21 reduce misses, 593 resting orders. These are checked on all 8 variants and both readers, with the same generator-reproduction test.
 
 ## 4. Invariants (assert these in `validate()` — Phase 7)
 1. Every resting order is in exactly one level's list and exactly once in `index_`.
@@ -54,6 +67,7 @@ gen_events / ITCH converter ─► events.bin ─► read_events / mmap ─► r
 6. `pool.live() == index_.size()`; free list + live == capacity.
 7. Market orders never rest; qty==0 and duplicate ids are rejected.
 8. Determinism: identical event sequence ⇒ identical trades and identical `checksum()`.
+9. Amendments: a Reduce, or a Modify that keeps the price without raising the qty, never changes an order's queue position. Any other Modify moves it behind every order already at its new level.
 
 ## 5. Design decisions (and what you'd change at scale)
 | Decision | Why | Revisit when |
