@@ -57,16 +57,20 @@ class TreePriceLevels {
   std::map<Price, PriceLevel, Compare> levels_;
 };
 
-// Dense central band for the synthetic-market experiment; arbitrary prices
-// remain valid through the ordered overflow map.
+// Dense band of `span` consecutive prices with an occupancy bitmap; prices outside the band
+// remain valid through the ordered overflow map. By default the band is centred on the first
+// price ever stored (so it follows the instrument: the original fixed 9,000-11,000 band only
+// fitted the synthetic generator, and every real ITCH price overflowed). Passing `base` pins it.
 template <class Compare>
 class DensePriceLevels {
  public:
-  explicit DensePriceLevels(Price base = 9'000, std::size_t span = 2'001)
-      : base_(base), levels_(span), occupied_((span + 63) / 64) {
-    if (span > static_cast<std::size_t>(std::numeric_limits<Price>::max()) ||
-        (span != 0 && base_ > std::numeric_limits<Price>::max() -
-                                   static_cast<Price>(span - 1))) {
+  explicit DensePriceLevels(std::size_t span = 2'001) : levels_(span), occupied_((span + 63) / 64) {
+    check_span(span);
+  }
+  DensePriceLevels(Price base, std::size_t span)
+      : base_(base), anchored_(true), levels_(span), occupied_((span + 63) / 64) {
+    check_span(span);
+    if (span != 0 && base_ > std::numeric_limits<Price>::max() - static_cast<Price>(span - 1)) {
       throw std::length_error("dense price range exceeds Price bounds");
     }
   }
@@ -75,6 +79,7 @@ class DensePriceLevels {
   std::size_t size() const noexcept { return size_; }
 
   PriceLevel& get_or_create(Price price) {
+    if (!anchored_) anchor(price);
     if (const auto index = dense_index(price)) {
       const std::size_t word = *index / 64;
       const std::uint64_t mask = std::uint64_t{1} << (*index % 64);
@@ -166,8 +171,24 @@ class DensePriceLevels {
   static constexpr std::size_t kNoIndex = std::numeric_limits<std::size_t>::max();
   static constexpr bool kDescending = std::is_same_v<Compare, std::greater<Price>>;
 
+  static void check_span(std::size_t span) {
+    if (span > static_cast<std::size_t>(std::numeric_limits<Price>::max()))
+      throw std::length_error("dense price range exceeds Price bounds");
+  }
+
+  // Centre the band on `price`, clamped so the whole band stays inside Price's range.
+  void anchor(Price price) noexcept {
+    const auto half = static_cast<Price>(levels_.size() / 2);
+    const Price lowest = std::numeric_limits<Price>::min();
+    const Price highest_base =
+        levels_.empty() ? std::numeric_limits<Price>::max()
+                        : std::numeric_limits<Price>::max() - static_cast<Price>(levels_.size() - 1);
+    base_ = price < lowest + half ? lowest : std::min(price - half, highest_base);
+    anchored_ = true;
+  }
+
   std::optional<std::size_t> dense_index(Price price) const noexcept {
-    if (price < base_) return std::nullopt;
+    if (price < base_) return std::nullopt;  // before anchoring the bitmap is empty: all misses
     const std::uint64_t offset = static_cast<std::uint64_t>(price) -
                                  static_cast<std::uint64_t>(base_);
     if (offset >= levels_.size()) return std::nullopt;
@@ -221,7 +242,8 @@ class DensePriceLevels {
     return base_ + static_cast<Price>(index);
   }
 
-  Price base_;
+  Price base_ = 0;
+  bool anchored_ = false;
   std::vector<PriceLevel> levels_;
   std::vector<std::uint64_t> occupied_;
   std::map<Price, PriceLevel, Compare> overflow_;

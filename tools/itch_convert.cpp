@@ -1,7 +1,9 @@
 // usage: itch_convert <in.NASDAQ_ITCH50> --list [top=20]
-//        itch_convert <in.NASDAQ_ITCH50> <out.bin> <SYMBOL> [max_events=0]
+//        itch_convert <in.NASDAQ_ITCH50> <out.bin> <SYMBOL> [max_events=0] [--tick N] [--drop-off-grid]
 // Converts one stock's order flow from a Nasdaq TotalView-ITCH 5.0 file into an event log
 // (mapping in replay/itch.hpp). --list counts Add messages per symbol to help pick one.
+// --tick 100 writes prices in cents (fails if any price is not a whole cent, unless
+// --drop-off-grid, which drops such orders and reports how many).
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -26,13 +28,21 @@ int main(int argc, char** argv) {
     return 0;
   }
   if (argc < 4) {
-    std::fprintf(stderr, "usage: %s <in.itch> --list [top]\n       %s <in.itch> <out.bin> <SYMBOL> [max_events]\n",
+    std::fprintf(stderr, "usage: %s <in.itch> --list [top]\n       %s <in.itch> <out.bin> <SYMBOL> [max_events] [--tick N] [--drop-off-grid]\n",
                  argv[0], argv[0]);
     return 2;
   }
   replay::ItchOptions options;
   options.symbol = argv[3];
-  options.max_events = argc > 4 ? std::strtoull(argv[4], nullptr, 10) : 0;
+  for (int i = 4; i < argc; ++i) {
+    if (std::strcmp(argv[i], "--tick") == 0 && i + 1 < argc) {
+      options.tick = static_cast<std::uint32_t>(std::strtoul(argv[++i], nullptr, 10));
+    } else if (std::strcmp(argv[i], "--drop-off-grid") == 0) {
+      options.drop_off_grid = true;
+    } else {
+      options.max_events = std::strtoull(argv[i], nullptr, 10);
+    }
+  }
 
   const auto start = std::chrono::steady_clock::now();
   std::vector<replay::Event> events;
@@ -47,7 +57,8 @@ int main(int argc, char** argv) {
     std::fprintf(stderr, "write failed: %s\n", argv[2]);
     return 1;
   }
-  std::printf("symbol        : %s (stock locate %u)\n", options.symbol.c_str(), unsigned{stats.locate});
+  std::printf("symbol        : %s (stock locate %u), tick = %u ITCH units\n", options.symbol.c_str(),
+              unsigned{stats.locate}, options.tick);
   std::printf("messages      : %llu read, %llu for the symbol (%.1f s)\n",
               (unsigned long long)stats.messages, (unsigned long long)stats.symbol_messages, secs);
   std::printf("order flow    : %llu adds, %llu executions, %llu cancels, %llu deletes, %llu replaces\n",
@@ -55,5 +66,8 @@ int main(int argc, char** argv) {
               (unsigned long long)stats.cancels, (unsigned long long)stats.deletes,
               (unsigned long long)stats.replaces);
   std::printf("unknown refs  : %llu (should be 0)\n", (unsigned long long)stats.unknown_refs);
+  if (options.drop_off_grid)
+    std::printf("off-grid      : %llu orders dropped (price not a multiple of the tick)\n",
+                (unsigned long long)stats.off_grid_orders);
   std::printf("wrote         : %zu events to %s\n", events.size(), argv[2]);
 }

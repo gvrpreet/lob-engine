@@ -150,6 +150,56 @@ TEST(itch_converted_log_replays_to_the_reconstructed_book) {
   CHECK(r.final_orders == 1);  // only order 200: sell 25 @ 1'005'000
 }
 
+TEST(itch_tick_divides_prices_and_rejects_off_grid) {
+  const std::string path = write_temp("lob_itch_tick.bin", sample().bytes());
+  std::vector<Event> ev;
+  replay::ItchStats st;
+  std::string error;
+  replay::ItchOptions cents{"TEST", 0, 100};
+  CHECK(replay::convert_itch(path, cents, ev, st, &error));
+  CHECK(ev.size() == 11 && ev[0].price == 10'000 && ev[1].price == 10'100 && ev[9].price == 10'050);
+  CHECK(replay::replay(ev).trades == 0);
+
+  replay::ItchOptions dollars{"TEST", 0, 10'000};  // 1'005'000 is not a whole dollar
+  CHECK(!replay::convert_itch(path, dollars, ev, st, &error) && ev.empty());
+  CHECK(error.find("1005000") != std::string::npos);
+  replay::ItchOptions zero{"TEST", 0, 0};
+  CHECK(!replay::convert_itch(path, zero, ev, st, &error));
+  std::remove(path.c_str());
+}
+
+TEST(itch_drop_off_grid_skips_sub_penny_orders_and_their_messages) {
+  Itch f;
+  f.directory(7, "TEST")
+      .add(7, 100, 10, 'B', 5, "TEST", 1)             // $0.0001 bid: off the cent grid
+      .executed(7, 101, 10, 1)                        // for the dropped order: skipped
+      .add(7, 102, 20, 'S', 5, "TEST", 1'010'000)
+      .replace(7, 103, 20, 21, 5, 1'010'050)          // moves off the grid: leaves the book
+      .replace(7, 104, 10, 11, 5, 990'000)            // dropped order moves onto the grid: enters
+      .remove(7, 105, 21)                             // dropped: skipped
+      .remove(7, 106, 11);
+  const std::string path = write_temp("lob_itch_offgrid.bin", f.bytes());
+  std::vector<Event> ev;
+  replay::ItchStats st;
+  std::string error;
+  CHECK(!replay::convert_itch(path, {"TEST", 0, 100}, ev, st, &error));  // strict by default
+
+  replay::ItchOptions drop{"TEST", 0, 100};
+  drop.drop_off_grid = true;
+  CHECK(replay::convert_itch(path, drop, ev, st, &error));
+  std::remove(path.c_str());
+  using S = lob::Side;
+  CHECK(st.off_grid_orders == 2 && st.unknown_refs == 0);
+  CHECK(ev.size() == 4);
+  if (ev.size() != 4) return;
+  CHECK(same(ev[0], EventType::New, 102, 20, S::Sell, 10'100, 5));
+  CHECK(ev[1].type == EventType::Cancel && ev[1].id == 20);
+  CHECK(same(ev[2], EventType::New, 104, 10, S::Buy, 9'900, 5));
+  CHECK(ev[3].type == EventType::Cancel && ev[3].id == 10);
+  const auto r = replay::replay(ev);
+  CHECK(r.cancel_misses == 0 && r.final_orders == 0 && r.trades == 0);
+}
+
 TEST(itch_max_events_and_errors) {
   const std::string path = write_temp("lob_itch_sample3.bin", sample().bytes());
   std::vector<Event> ev;

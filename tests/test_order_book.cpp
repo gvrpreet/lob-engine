@@ -116,7 +116,7 @@ TEST(flat_order_index_shifts_wrapped_collision_cluster_on_erase) {
 }
 
 TEST(dense_price_levels_order_central_and_overflow_prices) {
-  DensePriceLevels<std::less<Price>> asks;
+  DensePriceLevels<std::less<Price>> asks(9'000, 2'001);  // pinned band: 9,000-11,000
   for (Price price : std::vector<Price>{std::numeric_limits<Price>::max(), 11'001, 11'000, 10'000,
                                         9'000, 8'999, std::numeric_limits<Price>::min()}) {
     asks.get_or_create(price).total_qty = 1;
@@ -139,7 +139,7 @@ TEST(dense_price_levels_order_central_and_overflow_prices) {
 }
 
 TEST(dense_price_levels_order_bids_descending) {
-  DensePriceLevels<std::greater<Price>> bids;
+  DensePriceLevels<std::greater<Price>> bids(9'000, 2'001);
   for (Price price : std::vector<Price>{std::numeric_limits<Price>::min(), 8'999, 9'000, 10'000,
                                         11'000, 11'001, std::numeric_limits<Price>::max()}) {
     bids.get_or_create(price).total_qty = 1;
@@ -150,6 +150,46 @@ TEST(dense_price_levels_order_bids_descending) {
   bids.for_each_sorted([&](Price price, const PriceLevel&) { ordered.push_back(price); });
   CHECK((ordered == std::vector<Price>{std::numeric_limits<Price>::max(), 11'001, 11'000, 10'000,
                                        9'000, 8'999, std::numeric_limits<Price>::min()}));
+}
+
+TEST(dense_price_levels_anchor_band_on_first_price) {
+  // Default band follows the instrument: 101 slots centred on the first price (3'235'250).
+  DensePriceLevels<std::less<Price>> asks(101);
+  CHECK(asks.find(3'235'250) == nullptr && asks.best_price() == std::nullopt);
+  for (Price price : std::vector<Price>{3'235'250, 3'235'200, 3'235'300, 3'235'199, 3'235'301, 42})
+    asks.get_or_create(price).total_qty = 1;
+  CHECK(asks.size() == 6 && asks.best_price() == 42);
+  std::vector<Price> ordered;
+  asks.for_each_sorted([&](Price price, const PriceLevel&) { ordered.push_back(price); });
+  CHECK((ordered == std::vector<Price>{42, 3'235'199, 3'235'200, 3'235'250, 3'235'300, 3'235'301}));
+  asks.erase(42);
+  CHECK(asks.best_price() == 3'235'199);
+  asks.erase(3'235'199);
+  CHECK(asks.best_price() == 3'235'200);  // the band's lowest slot
+
+  // Anchoring at the extremes of Price clamps the band instead of overflowing.
+  DensePriceLevels<std::greater<Price>> top(101), bottom(101);
+  top.get_or_create(std::numeric_limits<Price>::max()).total_qty = 1;
+  bottom.get_or_create(std::numeric_limits<Price>::min()).total_qty = 1;
+  CHECK(top.best_price() == std::numeric_limits<Price>::max());
+  CHECK(bottom.best_price() == std::numeric_limits<Price>::min());
+}
+
+TEST(dense_order_book_matches_tree_at_real_price_scale) {
+  OrderBook tree(64);
+  DenseOrderBook dense(64);
+  std::vector<Trade> a, b;
+  for (OrderId id = 1; id <= 40; ++id) {
+    const Side side = id % 2 ? Side::Buy : Side::Sell;
+    const Price price = side == Side::Buy ? 3'235'000 - Price(id % 7) * 100
+                                          : 3'235'100 + Price(id % 5) * 100;
+    tree.add(id, side, OrderType::Limit, price, Qty(id), id, [&](const Trade& t) { a.push_back(t); });
+    dense.add(id, side, OrderType::Limit, price, Qty(id), id, [&](const Trade& t) { b.push_back(t); });
+  }
+  tree.add(99, Side::Buy, OrderType::Market, 0, 200, 99, [&](const Trade& t) { a.push_back(t); });
+  dense.add(99, Side::Buy, OrderType::Market, 0, 200, 99, [&](const Trade& t) { b.push_back(t); });
+  CHECK(a == b && !a.empty());
+  CHECK(tree.checksum() == dense.checksum());
 }
 
 TEST(dense_order_book_matches_tree_through_overflow_prices) {

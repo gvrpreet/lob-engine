@@ -116,6 +116,21 @@ bool convert_itch(const std::string& path, const ItchOptions& options, std::vect
   out.clear();
   stats = {};
   const std::string symbol = padded_symbol(options.symbol);
+  if (options.tick == 0) return fail(error, "tick must be at least 1");
+  std::string tick_error;  // strict mode: set (and conversion stopped) at the first off-grid price
+  // False if `itch_price` is off the tick grid. In strict mode that is an error; with
+  // drop_off_grid the caller drops the order instead.
+  const auto to_ticks = [&](std::uint64_t itch_price, lob::Price& ticks) {
+    if (itch_price % options.tick != 0) {
+      if (!options.drop_off_grid)
+        tick_error = "price " + std::to_string(itch_price) + " (message " +
+                     std::to_string(stats.messages - 1) + ") is not a multiple of tick " +
+                     std::to_string(options.tick);
+      return false;
+    }
+    ticks = static_cast<lob::Price>(itch_price / options.tick);
+    return true;
+  };
 
   struct Live {
     lob::OrderId id;
@@ -123,7 +138,8 @@ bool convert_itch(const std::string& path, const ItchOptions& options, std::vect
     lob::Qty remaining;
     lob::Side side;
   };
-  std::unordered_map<std::uint64_t, Live> live;  // ITCH reference -> order state
+  std::unordered_map<std::uint64_t, Live> live;         // ITCH reference -> order state
+  std::unordered_map<std::uint64_t, lob::Side> dropped;  // drop_off_grid: references skipped
 
   const auto emit = [&](EventType type, lob::Timestamp ts, lob::OrderId id, lob::Side side,
                         lob::Price price, lob::Qty qty) {
@@ -143,7 +159,7 @@ bool convert_itch(const std::string& path, const ItchOptions& options, std::vect
   const auto reduce = [&](std::uint64_t ref, lob::Qty shares, lob::Timestamp ts) {
     auto it = live.find(ref);
     if (it == live.end()) {
-      ++stats.unknown_refs;
+      if (dropped.count(ref) == 0) ++stats.unknown_refs;
       return;
     }
     shares = std::min(shares, it->second.remaining);
@@ -167,8 +183,14 @@ bool convert_itch(const std::string& path, const ItchOptions& options, std::vect
         const std::uint64_t ref = be(m + 11, 8);
         const lob::Side side = m[19] == 'B' ? lob::Side::Buy : lob::Side::Sell;
         const auto shares = static_cast<lob::Qty>(be(m + 20, 4));
-        const auto price = static_cast<lob::Price>(be(m + 32, 4));
         ++stats.adds;
+        lob::Price price = 0;
+        if (!to_ticks(be(m + 32, 4), price)) {
+          if (!tick_error.empty()) return false;
+          ++stats.off_grid_orders;
+          dropped[ref] = side;
+          break;
+        }
         if (shares == 0) break;
         live[ref] = Live{ref, price, shares, side};
         emit(EventType::New, ts, ref, side, price, shares);
@@ -185,9 +207,10 @@ bool convert_itch(const std::string& path, const ItchOptions& options, std::vect
         break;
       case 'D': {
         ++stats.deletes;
-        auto it = live.find(be(m + 11, 8));
+        const std::uint64_t ref = be(m + 11, 8);
+        auto it = live.find(ref);
         if (it == live.end()) {
-          ++stats.unknown_refs;
+          if (dropped.erase(ref) == 0) ++stats.unknown_refs;
           break;
         }
         emit(EventType::Cancel, ts, it->second.id, lob::Side::Buy, 0, 0);
@@ -196,16 +219,37 @@ bool convert_itch(const std::string& path, const ItchOptions& options, std::vect
       }
       case 'U': {
         ++stats.replaces;
-        auto it = live.find(be(m + 11, 8));
+        const std::uint64_t ref = be(m + 11, 8);
+        const std::uint64_t new_ref = be(m + 19, 8);
+        const auto shares = static_cast<lob::Qty>(be(m + 27, 4));
+        lob::Price price = 0;
+        const bool on_grid = to_ticks(be(m + 31, 4), price);
+        if (!tick_error.empty()) return false;
+        auto it = live.find(ref);
         if (it == live.end()) {
-          ++stats.unknown_refs;
+          const auto d = dropped.find(ref);
+          if (d == dropped.end()) {
+            ++stats.unknown_refs;
+            break;
+          }
+          const lob::Side side = d->second;
+          dropped.erase(d);
+          if (!on_grid) {
+            dropped[new_ref] = side;  // still off the grid: stays dropped
+          } else if (shares != 0) {  // moved onto the grid: it enters the book now
+            live[new_ref] = Live{ref, price, shares, side};
+            emit(EventType::New, ts, ref, side, price, shares);
+          }
           break;
         }
         Live order = it->second;
         live.erase(it);
-        const std::uint64_t new_ref = be(m + 19, 8);
-        const auto shares = static_cast<lob::Qty>(be(m + 27, 4));
-        const auto price = static_cast<lob::Price>(be(m + 31, 4));
+        if (!on_grid) {  // moved off the grid: leaves the book
+          ++stats.off_grid_orders;
+          dropped[new_ref] = order.side;
+          emit(EventType::Cancel, ts, order.id, lob::Side::Buy, 0, 0);
+          break;
+        }
         if (shares == 0) {
           emit(EventType::Cancel, ts, order.id, lob::Side::Buy, 0, 0);
           break;
@@ -225,6 +269,10 @@ bool convert_itch(const std::string& path, const ItchOptions& options, std::vect
     return options.max_events == 0 || out.size() < options.max_events;
   });
   if (!ok) return false;
+  if (!tick_error.empty()) {
+    out.clear();
+    return fail(error, tick_error);
+  }
   if (stats.locate == 0) return fail(error, "symbol " + options.symbol + " not in the stock directory");
   return true;
 }
