@@ -32,6 +32,8 @@ gen_events / ITCH converter ─► events.bin ─► read_events / mmap ─► r
 
 **Streaming replay (Phase 5b, `replay/event_stream.hpp`):** `EventLogStream` reads a log through a fixed window of records (default 2^20 = 32 MB). The header is checked against the file size at `open`, and each chunk is validated before any of its events are applied, with the same messages and absolute record indices as the other readers. `replay_stream` gives results identical to `replay()` at any window. Memory is the book plus the window, whatever the log size.
 
+**Paced replay (Phase 5e, `replay/paced.hpp`):** event i is due at start + (ts_i − ts_0) ÷ speed. The loop sleeps for gaps over 200 µs (waking 100 µs early), then spins. Lateness (applied time − due time) is recorded against the schedule, so a backlog shows as growing lateness. Results are identical to `replay()`.
+
 **Trading replay (Phase 5f/g, `replay_trading`, `replay/src/trading.cpp`)** is a separate loop, so `replay()`'s hot path is untouched:
 ```
 events.bin ─► apply due gateway actions ─► apply feed event ─► deliver fills ─► ITradingStrategy::on_event(book, gateway)
