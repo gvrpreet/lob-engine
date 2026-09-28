@@ -1,5 +1,8 @@
 # lob-engine: a limit order book and market-replay framework (C++20)
 
+[![ci](https://github.com/gvrpreet/lob-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/gvrpreet/lob-engine/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A single-threaded, price-time priority matching engine, and a deterministic replay framework that can drive it with synthetic feeds or with real Nasdaq TotalView-ITCH 5.0 order flow.
 - **Matching:** limit and market orders, cancel, same-id modify and partial cancel.
 - **Replay:** plain, streaming, timestamp-paced, and a mode where a strategy trades through a latency-delayed order gateway.
