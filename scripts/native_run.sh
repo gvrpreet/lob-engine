@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Native-host measurement run with automatic logging. Manual: docs/NATIVE-LIVE-USB.md
+# Native-host measurement run with automatic logging. Manual: docs/guides/native-linux-live-usb.md
 # usage: scripts/native_run.sh [full|variance] [results-root=results]
 #   full      day 1 (~25 min): environment, check.sh, TSan, golden checksums, perf stat per
 #             storage variant, THP never vs always, both latency timers, every bench_match
@@ -244,7 +244,7 @@ write_summary() {
     fi
     echo
     echo "## Next"
-    echo "- Copy this whole folder back (see docs/NATIVE-LIVE-USB.md §7) and compare days with \`scripts/native_compare.sh <results-root>\`."
+    echo "- Copy this whole folder back (see docs/guides/native-linux-live-usb.md §7) and compare days with \`scripts/native_compare.sh <results-root>\`."
   } > "$s"
   rm -f "$OUT"/.*.md.tsv
   echo "summary written: $s"

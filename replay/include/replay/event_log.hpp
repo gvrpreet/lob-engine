@@ -9,7 +9,7 @@
 
 namespace replay {
 
-// Event log file format (all integers little-endian; see docs/01-architecture.md):
+// Event log file format (all integers little-endian; see docs/architecture.md):
 //   offset 0   8 bytes   magic "LOBEVT01" (v1: New/Cancel), "LOBEVT02" (v2: adds Modify/Reduce)
 //                        or "LOBEVT03" (v3: adds Execute)
 //   offset 8   u64       record count N

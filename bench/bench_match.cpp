@@ -1,5 +1,5 @@
 // Usage: bench_match [event-count] [controlled-active-level-count]. Generation and shape passes are excluded from timing.
-// For trustworthy numbers follow docs/02-workflow.md ("Benchmark protocol").
+// For trustworthy numbers follow docs/workflow.md ("Benchmark protocol").
 #include <algorithm>
 #include <array>
 #include <cstdint>

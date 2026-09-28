@@ -22,7 +22,7 @@ struct NullSink {
 
 // Price-time priority limit order book. Single-threaded by design.
 //
-// Defaults (see docs/00-roadmap.md):
+// Defaults (see docs/roadmap.md):
 //   price levels : DensePriceLevels    -> re-centring bitmap band + overflow map. Default since
 //                                         2026-09-28: 10-22% faster than the tree on real ITCH
 //                                         flow (TreePriceLevels stays available: TreeOrderBook)
@@ -157,7 +157,7 @@ class BasicOrderBook {
       if (!f(pool_.id(h), pool_.qty(h))) return;
   }
 
-  // Checks the state invariants of docs/01-architecture.md §4 (Phase 7). O(orders + levels);
+  // Checks the state invariants of docs/architecture.md §4 (Phase 7). O(orders + levels);
   // for tests, debug checks and the fuzzer, never the hot path. Returns false and, if given,
   // sets `why` to the first violation found.
   bool validate(std::string* why = nullptr) const {

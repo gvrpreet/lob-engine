@@ -5,7 +5,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 cmake --preset debug > /dev/null
-files=$(ls src/*.cpp replay/src/*.cpp tools/*.cpp bench/*.cpp)
+files=$(ls engine/src/*.cpp replay/src/*.cpp apps/*.cpp bench/*.cpp)
 status=0
 for f in $files; do
   clang-tidy -p build/debug --quiet "$f" 2>/dev/null || status=1

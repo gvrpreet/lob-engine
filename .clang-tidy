@@ -6,5 +6,5 @@ Checks: >
   clang-analyzer-*,
   -bugprone-easily-swappable-parameters
 WarningsAsErrors: '*'
-HeaderFilterRegex: '(include|replay)/.*'
+HeaderFilterRegex: '(engine|replay)/include/.*'
 ...

@@ -1,0 +1,5 @@
+@PACKAGE_INIT@
+
+# Provides lob::engine and lob::replay (C++20).
+include("${CMAKE_CURRENT_LIST_DIR}/lob_engineTargets.cmake")
+check_required_components(lob_engine)

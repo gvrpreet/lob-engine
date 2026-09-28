@@ -2,8 +2,8 @@
 
 **Goal:** boot the same laptop (Ryzen 7 7840HS) into native Ubuntu from a USB stick, run every
 measurement that WSL2 cannot do, and save all output automatically to a USB drive, without
-installing anything on the laptop's disk. The comparison baseline is "WSL2 reference data" in
-`last-task-completed.md`. The measurements are listed in that file's "Native Linux Checklist".
+installing anything on the laptop's disk. The measurements, their status and the comparison
+baseline ("WSL2 reference data") are in [`native-linux-checklist.md`](native-linux-checklist.md).
 
 **Time:** day 1 takes ~60 min (≈20 min setup + ≈25 min unattended run). Days 2 and 3 take ~25 min each.
 The Phase 4 variance check needs runs on **three separate days**.
@@ -39,7 +39,7 @@ A single stick can hold both, via Rufus's persistence option (§3), but two devi
    git bundle verify /mnt/d/lob-engine.bundle      # "... is okay"
    ```
    Event data (`data/*.bin`) isn't needed. It's regenerated on the live system and verified by checksum.
-3. Optional: copy this manual (`docs/NATIVE-LIVE-USB.md`) to drive B so you can read it while booted into Linux.
+3. Optional: copy this manual (`docs/guides/native-linux-live-usb.md`) to drive B so you can read it while booted into Linux.
 4. Eject drive B from Windows ("Safely remove").
 
 ## 3. Make the live USB (stick A)
@@ -136,7 +136,7 @@ the default), similar room temperature, on AC, and an idle cool-down first.
    cp -r /mnt/d/lob-results/* ~/projects/lob-engine/results/
    scripts/native_compare.sh results
    ```
-4. Ask Claude to **import the native results**. That turns them into benchmark-log rows, updates the Phase 2/3/4 experiment notes, and ticks the checklist in `last-task-completed.md`. The docs are the permanent record; `results/` holds the raw evidence.
+4. Ask Claude to **import the native results**. That turns them into benchmark-log rows, updates the Phase 2/3/4 experiment notes, and ticks the checklist in `native-linux-checklist.md`. The docs are the permanent record; `results/` holds the raw evidence.
 
 ## 8. What each run folder contains
 `lob-results/<YYYY-MM-DD_HHMMSS>_<full|variance>/`

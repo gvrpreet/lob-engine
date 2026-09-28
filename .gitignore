@@ -1,8 +1,19 @@
+# build trees and tool output
 build/
-data/*.bin
-data/itch/
-*.NASDAQ_ITCH50*
-data/perf.data*
 compile_commands.json
 .cache/
+
+# generated or downloaded data (regenerate with gen_events / itch_convert)
+data/*.bin
+data/perf.data*
+data/itch/
+*.NASDAQ_ITCH50*
+
+# local measurement output (scripts write here)
 results/
+
+# local working notes and editor/agent settings
+docs/last-task-completed.md
+.vscode/
+.idea/
+.claude/

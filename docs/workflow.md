@@ -2,14 +2,14 @@
 
 ## The loop (per change)
 ```
- 1. HYPOTHESIS   write it in docs/learning/experiments/YYYY-MM-DD-name.md
+ 1. HYPOTHESIS   write it in docs/experiments/YYYY-MM-DD-name.md
                  ("Replacing unordered_map with flat table cuts LLC misses/event by ~X because ...")
  2. TEST FIRST   add/extend a test (unit or differential) that pins behaviour
  3. IMPLEMENT    smallest change; keep the old implementation selectable until proven
  4. CHECK        scripts/check.sh           (ASan+UBSan + release tests)
  5. MEASURE      scripts/bench.sh           (pinned, warm, multi-run)  +  scripts/perf.sh stat
  6. EXPLAIN      does a counter explain the delta?  (instructions? IPC? cache/branch misses?)
- 7. RECORD       append a row to docs/03-benchmark-log.md, finish the experiment note
+ 7. RECORD       append a row to docs/benchmark-log.md, finish the experiment note
  8. COMMIT       one logical change per commit:  "phase3: flat id index (+18% ev/s, -30% LLC miss)"
 ```
 If step 6 has no explanation, you don't understand the change yet — that's the actual learning signal.
@@ -18,11 +18,11 @@ If step 6 has no explanation, you don't understand the change yet — that's the
 - [ ] `scripts/check.sh` passes (ASan/UBSan + release)
 - [ ] Differential test passes with ≥ 3 seeds; replay checksum unchanged vs previous commit
 - [ ] Benchmark entry added (hardware, compiler, flags, commit, N runs)
-- [ ] Invariants in `01-architecture.md` still hold (`validate()` once it exists)
+- [ ] Invariants in `architecture.md` still hold (`validate()` once it exists)
 - [ ] Experiment note filled in (hypothesis → result → what surprised you)
 
 ## Daily / weekly cadence
-- **Daily (60–120 min):** 25 min read/watch → 60 min build → 10 min notes (`docs/learning/notes/TEMPLATE.md`).
+- **Daily (60–120 min):** 25 min read/watch → 60 min build → 10 min notes (`docs/journal/notes-template.md`).
 - **Weekly:** phase review — check exit criteria, update the resume evidence map, decide next experiment.
 - **Rule:** re-implement, don't copy. For each phase, write the code from scratch first, then compare with the reference.
 

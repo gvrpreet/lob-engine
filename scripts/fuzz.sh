@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # usage: scripts/fuzz.sh [seconds=300] [jobs=1]
-# Builds tests/fuzz_book.cpp with clang + libFuzzer + ASan/UBSan and fuzzes the default (dense)
+# Builds tests/fuzz/fuzz_book.cpp with clang + libFuzzer + ASan/UBSan and fuzzes the default (dense)
 # book and the tree book against the naive oracle. The corpus (build/fuzz-corpus) is kept, so
 # later runs continue from it. Per-job logs, and any crash-* reproducer, go to build/fuzz-work.
 # Ends with the total number of operations checked across all jobs.

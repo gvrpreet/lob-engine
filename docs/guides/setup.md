@@ -2,20 +2,20 @@
 
 This is the on-ramp and the reference manual. Read §1–§5 once and run the commands. Come back to
 §6–§8 whenever you need a tool's arguments or the expected outputs. For the learning/build plan,
-see `docs/00-roadmap.md`; for the per-change loop, `docs/02-workflow.md`; for where the project
-currently stands, `docs/last-task-completed.md`.
+see `docs/roadmap.md`; for the per-change loop, `docs/workflow.md`; for where the project
+currently stands, the latest **Status** lines in `docs/roadmap.md` and `CHANGELOG.md`.
 
 | Doc | Use it for |
 |---|---|
-| `SETUP.md` (this file) | install, build, verify, tool usage, troubleshooting |
-| `00-roadmap.md` | phases, exit criteria, what to learn/build next |
-| `01-architecture.md` | data model, invariants, design decisions |
-| `02-workflow.md` | the 8-step change loop, definition of done, benchmark protocol |
-| `03-benchmark-log.md` | append-only measured results |
-| `last-task-completed.md` | current checkpoint, next task, native Linux checklist + WSL2 reference data |
-| `NATIVE-LIVE-USB.md` | step-by-step native run from a live USB on the same laptop, with automatic result logging |
-| `development-journey.md` | why decisions were made; what was deferred |
-| `learning/experiments/`, `learning/notes/` | per-experiment records and daily notes |
+| `guides/setup.md` (this file) | install, build, verify, tool usage, troubleshooting |
+| `roadmap.md` | phases, exit criteria, what to learn/build next |
+| `architecture.md` | data model, invariants, design decisions |
+| `workflow.md` | the 8-step change loop, definition of done, benchmark protocol |
+| `benchmark-log.md` | append-only measured results |
+| `guides/native-linux-checklist.md` | what needs a native host, run order, WSL2 reference data |
+| `guides/native-linux-live-usb.md` | step-by-step native run from a live USB on the same laptop, with automatic result logging |
+| `journal/development-journey.md` | why decisions were made; what was deferred |
+| `experiments/`, `journal/notes/` | per-experiment records and daily notes |
 
 ---
 ## 1. Pick an environment
@@ -28,8 +28,7 @@ currently stands, `docs/last-task-completed.md`.
 | macOS / native Windows | not supported: scripts need bash + `taskset`; untested | — | — | — | — | — |
 
 On WSL2 you can develop, test and compare variants, but hardware counters, TSan and trustworthy
-cross-day numbers need a native Linux host. See the "Native Linux Checklist" in
-`last-task-completed.md`.
+cross-day numbers need a native Linux host. See `docs/guides/native-linux-checklist.md`.
 
 ## 2. What to install
 
@@ -58,7 +57,7 @@ cross-day numbers need a native Linux host. See the "Native Linux Checklist" in
 
 ### Don't install / not needed
 - **Don't install `linux-tools-$(uname -r)` on WSL2.** No package exists for the Microsoft kernel, so `apt` fails the whole command. Ubuntu's `perf` wrapper may still exist, but prints `perf not found for kernel …-microsoft`.
-- **No test/benchmark frameworks.** The tests use the zero-dependency harness in `tests/testing.hpp`. Google Test, Catch2 and Google Benchmark are not used.
+- **No test/benchmark frameworks.** The tests use the zero-dependency harness in `tests/support/testing.hpp`. Google Test, Catch2 and Google Benchmark are not used.
 - `ninja` is optional. The presets don't select it, and builds use Makefiles.
 - `clang-tidy` is optional for now. It's planned for CI in Phase 7 but not wired up yet.
 - No Python, Conan/vcpkg, or Boost. The project has no third-party dependencies.
@@ -182,7 +181,7 @@ build/release/bench_match 1000000 25 25      # exactly 25 levels, 25% configured
 | `scripts/perf.sh record [file]` | sampling profile with frame-pointer call graphs → `perf report` (native only) |
 | `scripts/perf.sh cache [file]` | Cachegrind on a separate non-native `build/cache` build (works everywhere, slow) |
 | `scripts/native_setup.sh` | native/live-USB session: installs toolchain + perf, sets perf permissions and governor/EPP (needs sudo) |
-| `scripts/native_run.sh [full\|variance] [dir]` | the whole native measurement set with automatic logging and `summary.md`; see `NATIVE-LIVE-USB.md` |
+| `scripts/native_run.sh [full\|variance] [dir]` | the whole native measurement set with automatic logging and `summary.md`; see `guides/native-linux-live-usb.md` |
 | `scripts/native_compare.sh [dir]` | cross-run/cross-day spread of `bench_match` medians (Phase 4 < 5% check) |
 
 `perf.sh` defaults to `data/events_5000000.bin`. For per-function instruction counts:
@@ -214,17 +213,17 @@ WSL2 exposes no governor, so record "not exposed".
 - [ ] Latency reported as percentiles plus the timer overhead printed next to them; never the mean alone
 - [ ] Checksum matches §8 for the workload, so you know you measured the same work
 - [ ] Recorded: CPU, cores/SMT, RAM, kernel, compiler + version, flags, commit, event count, seed, clocksource, governor/boost
-- [ ] Row appended to `docs/03-benchmark-log.md` (never edit old rows)
+- [ ] Row appended to `docs/benchmark-log.md` (never edit old rows)
 
 Expect large variance on WSL2 and laptops. On WSL2 the same 1M benchmark has differed by ~40%
 between sessions, while spread within one session was 1–5%. Compare A vs B within one
 invocation, and don't publish absolute latencies from a VM as bare-metal figures.
 
-### Before every commit (definition of done, from `02-workflow.md`)
+### Before every commit (definition of done, from `workflow.md`)
 - [ ] `scripts/check.sh` → `CHECK PASSED`, with no new compiler warnings
 - [ ] Differential test passes; replay checksums unchanged (§8)
 - [ ] For performance changes: benchmark row, a counter that explains the delta (or Cachegrind on WSL2), and a finished experiment note
-- [ ] After touching the replay loop, check that the **unmeasured** path's instruction count didn't change. Measurement code once pushed map/index calls out of line (+27 instructions/event). See `learning/experiments/2026-09-27-phase4-tsc-histogram.md`.
+- [ ] After touching the replay loop, check that the **unmeasured** path's instruction count didn't change. Measurement code once pushed map/index calls out of line (+27 instructions/event). See `experiments/2026-09-27-phase4-tsc-histogram.md`.
 
 ## 8. Golden checksums (seed 42)
 
@@ -243,14 +242,14 @@ All storage variants and level stores must produce the same checksum for a workl
 
 A changed checksum means behavior changed. That's a bug unless the change was intended and
 documented, for example a new event type. For reference throughput and latency on the same CPU
-under WSL2, see "WSL2 reference data" in `last-task-completed.md`.
+under WSL2, see "WSL2 reference data" in `docs/guides/native-linux-checklist.md`.
 
 ## 9. Daily workflow: where to start
 
-1. Open `docs/last-task-completed.md` (current checkpoint and next task) and the matching phase in `docs/00-roadmap.md`.
-2. Follow the 8-step loop in `docs/02-workflow.md` for every change: hypothesis → test first → implement → check → measure → explain → record → commit.
-3. Each session, copy `docs/learning/notes/TEMPLATE.md` to `docs/learning/notes/$(date +%F)-phaseN.md` and fill it in.
-4. For each experiment, copy `docs/learning/experiments/TEMPLATE.md` and write the hypothesis *before* the code.
+1. Open the matching phase in `docs/roadmap.md` (its latest **Status** line says where things stand).
+2. Follow the 8-step loop in `docs/workflow.md` for every change: hypothesis → test first → implement → check → measure → explain → record → commit.
+3. Each session, copy `docs/journal/notes-template.md` to `docs/journal/notes/$(date +%F)-phaseN.md` and fill it in.
+4. For each experiment, copy `docs/experiments/TEMPLATE.md` and write the hypothesis *before* the code.
 5. Re-implement, don't copy. For each phase, write the code from scratch first, then compare with the reference.
 6. Keep commits small and local. Branch as `phaseN/<topic>`; don't push unless you mean to.
 
@@ -267,17 +266,17 @@ under WSL2, see "WSL2 reference data" in `last-task-completed.md`.
 | `cmake: command not found` / too old | install per §2 |
 | ASan run is very slow | Expected (~5–10×). Use `debug` for iteration and `asan` for the pre-commit gate. |
 | Benchmark numbers jump > 20% between runs or sessions | Frequency scaling, thermal limits, other processes, or the WSL2 host. Fix §7, increase runs, and compare within one invocation. |
-| `bench_match` prints `checksum mismatch` / exit 1 | A variant diverged in behavior. Treat it as a correctness bug (`02-workflow.md` → debugging checklist). |
+| `bench_match` prints `checksum mismatch` / exit 1 | A variant diverged in behavior. Treat it as a correctness bug (`workflow.md` → debugging checklist). |
 | `replay_cli` checksum ≠ §8 | Wrong or regenerated file (check count and seed) or a behavior change. Don't benchmark until resolved. |
 | `storage variants are exclusive and require --no-strategy` | Add `--no-strategy`; use one storage flag at a time |
 | `-march=native` binary crashes elsewhere (`Illegal instruction`) | Release preset is CPU-specific. Rebuild on the target machine. |
 | `rdtscp` latency not lower than `steady_clock` | Expected when the clocksource is `tsc` (both ~20 ns). Its `lfence` also costs throughput. |
-| Differential test fails after your change | `02-workflow.md` → "Debugging checklist when a differential test fails" |
+| Differential test fails after your change | `workflow.md` → "Debugging checklist when a differential test fails" |
 
 ## 11. What "good" looks like before moving to the next phase
 
 - `scripts/check.sh` is green, and CI (g++ and clang++ × debug/asan/release) would be too.
-- You can explain every invariant in `docs/01-architecture.md §4`, and why the code upholds it.
+- You can explain every invariant in `docs/architecture.md §4`, and why the code upholds it.
 - Every number you'd quote has a benchmark-log row with hardware, compiler, flags, commit and run count.
-- At least one filled-in note in `docs/learning/notes/`, and one experiment in `docs/learning/experiments/` per optimization.
+- At least one filled-in note in `docs/journal/notes/`, and one experiment in `docs/experiments/` per optimization.
 - You never skipped writing the test before the implementation.

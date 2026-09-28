@@ -4,7 +4,7 @@ A single-threaded, price-time priority matching engine, and a deterministic repl
 - **Matching:** limit and market orders, cancel, same-id modify and partial cancel.
 - **Replay:** plain, streaming, timestamp-paced, and a mode where a strategy trades through a latency-delayed order gateway.
 
-It was built as a curriculum, one phase at a time: every optimisation comes with a test that guards correctness and a measurement that explains the result. The build log, dead ends included, is in [`docs/`](docs/00-roadmap.md).
+It was built as a curriculum, one phase at a time: every optimisation comes with a test that guards correctness and a measurement that explains the result. The build log, dead ends included, is in [`docs/`](docs/README.md).
 
 ## Architecture
 
@@ -23,11 +23,11 @@ It was built as a curriculum, one phase at a time: every optimisation comes with
                      │ orders      : 32-byte records in one slab pool (no per-order malloc)     │
                      └─────────────────────────────────────────────────────────────────────────┘
 ```
-Invariants, the event-log format and the design decisions are in [`docs/01-architecture.md`](docs/01-architecture.md).
+Invariants, the event-log format and the design decisions are in [`docs/architecture.md`](docs/architecture.md).
 
 ## Results
 
-Unless marked native, the numbers come from WSL2 on a Ryzen 7 7840HS, with GCC 13.3 and `-O2 -march=native`, pinned with `taskset`. The median of 7 runs is shown. Every row in [`docs/03-benchmark-log.md`](docs/03-benchmark-log.md) carries its commit, flags and run count.
+Unless marked native, the numbers come from WSL2 on a Ryzen 7 7840HS, with GCC 13.3 and `-O2 -march=native`, pinned with `taskset`. The median of 7 runs is shown. Every row in [`docs/benchmark-log.md`](docs/benchmark-log.md) carries its commit, flags and run count.
 
 | What | Result |
 |---|---|
@@ -39,7 +39,7 @@ Unless marked native, the numbers come from WSL2 on a Ryzen 7 7840HS, with GCC 1
 | ITCH reconstruction | AAPL, AMD, TQQQ, TSLA rebuilt with 0 unknown references, 0 misses, 0 crossed states |
 | Fuzzing | 21.2M operations (dense and tree books vs a naive oracle) clean under ASan/UBSan |
 
-Things the measurements caught along the way, each written up in `docs/learning/experiments/`:
+Things the measurements caught along the way, each written up in `docs/experiments/`:
 - A +19% instruction regression hidden by timing noise (lost inlining).
 - An order-index hash that collapsed after about 10M events (identity hash plus linear probing).
 - A dense-vs-tree conclusion that reversed twice once real data was used.
@@ -69,23 +69,49 @@ build/release/replay_cli data/itch/AAPL_c.bin --no-strategy [--tree]
 
 scripts/phase5_exit.sh                             # end-to-end suite, run twice and diffed bit-for-bit
 ```
-Storage variants for comparison (with `--no-strategy`): `--tree`, `--sorted`, `--naive`, `--order-size 48|64`, `--hot-cold`, `--huge-pages`. Native Linux measurements (`perf`, THP, TSan) are scripted in `scripts/native_*.sh`, with an operator manual in [`docs/NATIVE-LIVE-USB.md`](docs/NATIVE-LIVE-USB.md).
+Storage variants for comparison (with `--no-strategy`): `--tree`, `--sorted`, `--naive`, `--order-size 48|64`, `--hot-cold`, `--huge-pages`. Native Linux measurements (`perf`, THP, TSan) are scripted in `scripts/native_*.sh`, with an operator manual in [`docs/guides/native-linux-live-usb.md`](docs/guides/native-linux-live-usb.md).
 
-## Layout
+## Repository layout
 
 ```
-include/lob/     engine: types, 32-byte order, slab pool, price levels (dense/tree/sorted), flat id index, order book
-replay/          event format + readers (read, mmap, stream), replay loops (plain, paced, trading), ITCH converter,
-                 synthetic generator, strategies (VWAP, market maker), latency histogram, timers
-tools/           gen_events · replay_cli · itch_convert          bench/  bench_match
-tests/           unit · differential vs naive oracle · golden files · fuzz_book (libFuzzer)
-scripts/         build · check · tidy · fuzz · bench · perf · phase5_exit · stream_measure · native_{setup,run,compare}
-docs/            roadmap (start here) · architecture · workflow · benchmark log · journey · experiment notes
+engine/            lob::engine: the order book
+  include/lob/       types, 32-byte order, slab pool, price levels (dense/tree/sorted), flat id index, order_book.hpp
+  src/
+replay/            lob::replay: event format, readers (read / mmap / stream), replay loops (plain / paced / trading),
+  include/replay/    ITCH 5.0 converter, synthetic generator, strategies (VWAP, market maker), latency histogram, timers
+  src/
+apps/              gen_events · replay_cli · itch_convert
+bench/             bench_match (all storage variants, alternating runs)
+tests/
+  unit/              unit, differential (vs a naive oracle), golden-file, replay-mode and ITCH tests
+  fuzz/              libFuzzer harness (dense + tree books vs the oracle)
+  support/           test harness and the RefBook oracle
+  data/              committed golden event logs with pinned results
+scripts/           build · check · tidy · fuzz · bench · perf · phase5_exit · stream_measure · native_{setup,run,compare}
+cmake/             package config for find_package(lob_engine)
+docs/              architecture · roadmap · workflow · benchmark log · experiments/ · guides/ · journal/
 ```
+
+## Using it as a library
+
+```cmake
+# as a subdirectory / FetchContent: tests, apps and benchmarks are off unless this is the top-level project
+add_subdirectory(lob-engine)
+target_link_libraries(my_app PRIVATE lob::replay)   # or lob::engine for the book alone
+
+# or after `cmake --install build/release --prefix <prefix>`
+find_package(lob_engine 0.9 REQUIRED)
+target_link_libraries(my_app PRIVATE lob::replay)
+```
+Options: `LOB_BUILD_TESTS`, `LOB_BUILD_APPS`, `LOB_BUILD_BENCH`, `LOB_INSTALL`, `LOB_ASAN`, `LOB_TSAN`, `LOB_NATIVE`, `LOB_FUZZ` (see `CMakePresets.json` for the presets the scripts use).
 
 ## Status
 
-Phases 0–5 and 7 are complete; the phase-by-phase evidence is in [`docs/00-roadmap.md`](docs/00-roadmap.md). Strategies on ITCH data get queue-position fills: feed executions fill the strategy orders ahead of them in price-time priority. The demo market maker quotes at the others' touch. It is a test strategy, not a profitable one: its day results on real data are near zero and noisy. Still open:
+Phases 0–5 and 7 are complete; the phase-by-phase evidence is in [`docs/roadmap.md`](docs/roadmap.md). Strategies on ITCH data get queue-position fills: feed executions fill the strategy orders ahead of them in price-time priority. The demo market maker quotes at the others' touch. It is a test strategy, not a profitable one: its day results on real data are near zero and noisy. Still open:
 - better strategies (queue-priority preservation, inventory skew) and multi-day data for any statistical claim;
 - cross-day variance on a native host;
 - Phase 6 (concurrency).
+
+## License
+
+MIT; see [`LICENSE`](LICENSE). Nasdaq TotalView-ITCH sample data is not included; download it from Nasdaq and convert it locally.
