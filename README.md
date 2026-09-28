@@ -85,7 +85,7 @@ docs/            roadmap (start here) · architecture · workflow · benchmark l
 
 ## Status
 
-Phases 0–5 and 7 are complete; the phase-by-phase evidence is in [`docs/00-roadmap.md`](docs/00-roadmap.md). Strategies on ITCH data get queue-position fills: feed executions fill the strategy orders ahead of them in price-time priority. Still open:
-- a smarter market maker (the current one treats its own order as the touch);
+Phases 0–5 and 7 are complete; the phase-by-phase evidence is in [`docs/00-roadmap.md`](docs/00-roadmap.md). Strategies on ITCH data get queue-position fills: feed executions fill the strategy orders ahead of them in price-time priority. The demo market maker quotes at the others' touch. It is a test strategy, not a profitable one: its day results on real data are near zero and noisy. Still open:
+- better strategies (queue-priority preservation, inventory skew) and multi-day data for any statistical claim;
 - cross-day variance on a native host;
 - Phase 6 (concurrency).
