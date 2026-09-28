@@ -100,6 +100,7 @@ bool replay_stream(EventLogStream& stream, const ReplayConfig& cfg, ReplayStats&
           break;
         case EventType::Modify:
         case EventType::Reduce:
+        case EventType::Execute:
           detail::apply_amend(book, event, st, strat);
           break;
       }

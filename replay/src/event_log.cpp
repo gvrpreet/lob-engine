@@ -15,6 +15,12 @@ static_assert(std::endian::native == std::endian::little,
 
 constexpr char kMagicV1[8] = {'L', 'O', 'B', 'E', 'V', 'T', '0', '1'};
 constexpr char kMagicV2[8] = {'L', 'O', 'B', 'E', 'V', 'T', '0', '2'};
+constexpr char kMagicV3[8] = {'L', 'O', 'B', 'E', 'V', 'T', '0', '3'};
+
+// Highest event type each format version allows: v1 New/Cancel, v2 + Modify/Reduce, v3 + Execute.
+constexpr std::uint8_t max_type_for(unsigned version) noexcept {
+  return version >= 3 ? 4 : version == 2 ? 3 : 1;
+}
 struct FileCloser { void operator()(std::FILE* f) const { if (f) std::fclose(f); } };
 using File = std::unique_ptr<std::FILE, FileCloser>;
 
@@ -28,18 +34,21 @@ bool write_events(const std::string& path, std::span<const Event> events) {
   File f(std::fopen(path.c_str(), "wb"));
   if (!f) return false;
   const std::uint64_t n = events.size();
-  const bool v2 = std::any_of(events.begin(), events.end(), [](const Event& e) {
-    return e.type != EventType::New && e.type != EventType::Cancel;
-  });
+  // The lowest version that can hold every event, so older logs stay byte-identical.
+  std::uint8_t max_type = 0;
+  for (const Event& e : events) max_type = std::max(max_type, static_cast<std::uint8_t>(e.type));
+  const char* magic = max_type > max_type_for(2) ? kMagicV3
+                      : max_type > max_type_for(1) ? kMagicV2
+                                                   : kMagicV1;
   // An empty span may have data() == nullptr, which fwrite must not receive even for 0 records.
-  return std::fwrite(v2 ? kMagicV2 : kMagicV1, 1, 8, f.get()) == 8 &&
+  return std::fwrite(magic, 1, 8, f.get()) == 8 &&
          std::fwrite(&n, sizeof n, 1, f.get()) == 1 &&
          (events.empty() ||
           std::fwrite(events.data(), sizeof(Event), events.size(), f.get()) == events.size());
 }
 
 std::size_t first_invalid_event(std::span<const Event> events, unsigned version) noexcept {
-  const std::uint8_t max_type = version >= 2 ? 3 : 1;
+  const std::uint8_t max_type = max_type_for(version);
   for (std::size_t i = 0; i < events.size(); ++i) {
     const Event& e = events[i];
     if (static_cast<std::uint8_t>(e.type) > max_type || static_cast<std::uint8_t>(e.side) > 1 ||
@@ -54,7 +63,8 @@ bool check_event_log_header(const void* header, std::uint64_t file_bytes, std::u
   if (file_bytes < kEventLogHeaderBytes) return fail(error, "file shorter than the 16-byte header");
   if (std::memcmp(header, kMagicV1, 8) == 0) version = 1;
   else if (std::memcmp(header, kMagicV2, 8) == 0) version = 2;
-  else return fail(error, "bad magic (expected LOBEVT01 or LOBEVT02)");
+  else if (std::memcmp(header, kMagicV3, 8) == 0) version = 3;
+  else return fail(error, "bad magic (expected LOBEVT01, LOBEVT02 or LOBEVT03)");
   std::uint64_t n = 0;
   std::memcpy(&n, static_cast<const char*>(header) + 8, sizeof n);
   const std::uint64_t payload = file_bytes - kEventLogHeaderBytes;

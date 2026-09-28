@@ -65,6 +65,7 @@ ReplayStats replay_with_book(std::span<const Event> events, const ReplayConfig& 
         break;
       case EventType::Modify:
       case EventType::Reduce:
+      case EventType::Execute:
         detail::apply_amend(book, event, st, strat);  // separate TU: see amend.hpp
         break;
     }

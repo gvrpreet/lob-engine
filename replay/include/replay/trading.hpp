@@ -32,6 +32,10 @@ struct TradingConfig {
   // Every gateway action reaches the book this long after it was sent. It is applied before the
   // first feed event whose timestamp is >= its arrival time; actions keep their send order.
   lob::Timestamp order_latency_ns = 0;
+  // Queue-position fills on Execute events (ITCH-derived logs): a feed execution also fills the
+  // strategy orders that price-time priority puts ahead of the executed order. Without it,
+  // strategy orders on ITCH data fill only when a displayed Add crosses them (one-sided).
+  bool queue_fills = true;
 };
 
 class OrderGateway;
@@ -46,6 +50,7 @@ struct StrategyMetrics {
   std::uint64_t dropped = 0;        // actions still in flight when the log ended
   std::uint64_t submitted_qty = 0;  // shares offered: submit qty plus any qty raised by modify
   std::uint64_t filled_qty = 0, fills = 0, aggressive_fills = 0;
+  std::uint64_t queue_fills = 0, queue_fill_qty = 0;  // of those, from the queue-position model
   std::int64_t position = 0;        // shares, positive = long
   std::int64_t cash = 0;            // ticks x shares: sells add, buys subtract
   double realised_pnl = 0;          // ticks x shares, average-cost method

@@ -155,15 +155,15 @@ bool convert_itch(const std::string& path, const ItchOptions& options, std::vect
     if (type != EventType::Cancel) e.qty = qty;
     out.push_back(e);
   };
-  // E/C/X: take shares off an order (never more than it has left).
-  const auto reduce = [&](std::uint64_t ref, lob::Qty shares, lob::Timestamp ts) {
+  // E/C (Execute) and X (Reduce): take shares off an order (never more than it has left).
+  const auto reduce = [&](EventType type, std::uint64_t ref, lob::Qty shares, lob::Timestamp ts) {
     auto it = live.find(ref);
     if (it == live.end()) {
       if (dropped.count(ref) == 0) ++stats.unknown_refs;
       return;
     }
     shares = std::min(shares, it->second.remaining);
-    emit(EventType::Reduce, ts, it->second.id, lob::Side::Buy, 0, shares);
+    emit(type, ts, it->second.id, lob::Side::Buy, 0, shares);
     it->second.remaining -= shares;
     if (it->second.remaining == 0) live.erase(it);
   };
@@ -199,11 +199,11 @@ bool convert_itch(const std::string& path, const ItchOptions& options, std::vect
       case 'E':
       case 'C':
         ++stats.executions;
-        reduce(be(m + 11, 8), static_cast<lob::Qty>(be(m + 19, 4)), ts);
+        reduce(EventType::Execute, be(m + 11, 8), static_cast<lob::Qty>(be(m + 19, 4)), ts);
         break;
       case 'X':
         ++stats.cancels;
-        reduce(be(m + 11, 8), static_cast<lob::Qty>(be(m + 19, 4)), ts);
+        reduce(EventType::Reduce, be(m + 11, 8), static_cast<lob::Qty>(be(m + 19, 4)), ts);
         break;
       case 'D': {
         ++stats.deletes;

@@ -13,7 +13,7 @@ void apply_amend(Book& book, const Event& event, ReplayStats& st, IStrategy* str
     const auto r = book.modify(event.id, event.price, event.qty, event.ts, sink);
     if (r == lob::ModifyResult::NotFound) ++st.modify_misses;
     else if (r == lob::ModifyResult::Rejected) ++st.rejected;
-  } else if (!book.reduce(event.id, event.qty)) {
+  } else if (!book.reduce(event.id, event.qty)) {  // Reduce and Execute: same book effect
     ++st.reduce_misses;
   }
 }

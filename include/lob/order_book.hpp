@@ -132,6 +132,26 @@ class BasicOrderBook {
     return level == nullptr ? 0 : level->total_qty;
   }
 
+  // Simulation queries (the trading replay's queue-position model; not the hot path).
+  // Side, price and remaining qty of a resting order; false if `id` is not resting.
+  bool find_order(OrderId id, Side& side, Price& price, Qty& qty) const {
+    Handle h;
+    if (!index_.find(id, h)) return false;
+    side = pool_.side(h);
+    price = pool_.price(h);
+    qty = pool_.qty(h);
+    return true;
+  }
+  // Visits the orders queued at (side, price) in time priority as f(OrderId, Qty); stops as
+  // soon as f returns false.
+  template <class F>
+  void for_each_order_at(Side side, Price price, F&& f) const {
+    const PriceLevel* level = side == Side::Buy ? bids_.find(price) : asks_.find(price);
+    if (level == nullptr) return;
+    for (Handle h = level->head; h != kInvalid; h = pool_.next(h))
+      if (!f(pool_.id(h), pool_.qty(h))) return;
+  }
+
   // Checks the state invariants of docs/01-architecture.md §4 (Phase 7). O(orders + levels);
   // for tests, debug checks and the fuzzer, never the hot path. Returns false and, if given,
   // sets `why` to the first violation found.

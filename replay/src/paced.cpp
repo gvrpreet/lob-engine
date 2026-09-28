@@ -54,6 +54,7 @@ PacedStats replay_paced(std::span<const Event> events, const ReplayConfig& cfg, 
         break;
       case EventType::Modify:
       case EventType::Reduce:
+      case EventType::Execute:
         detail::apply_amend(book, event, st, strat);
         break;
     }

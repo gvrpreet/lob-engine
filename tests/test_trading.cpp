@@ -139,6 +139,51 @@ TEST(cancel_modify_misses_rejects_and_in_flight) {
   CHECK(m.submitted_qty == 3 && m.fills == 0 && m.position == 0);
 }
 
+TEST(queue_position_fills_from_feed_executions) {
+  const auto execute = [](Timestamp ts, OrderId id, Qty qty) {
+    Event e{};
+    e.ts = ts;
+    e.id = id;
+    e.qty = qty;
+    e.type = EventType::Execute;
+    return e;
+  };
+  const std::vector<Event> ev{
+      limit(100, 1, Side::Sell, 101, 10),
+      limit(200, 2, Side::Buy, 99, 10),   // strategy bid (sent after this) queues behind it
+      execute(300, 2, 4),                 // ahead of us: we only move up the queue
+      limit(400, 3, Side::Buy, 99, 10),   // behind us
+      execute(500, 3, 3),                 // behind us: the aggressor would have hit us first
+      execute(600, 2, 6),                 // ahead of us (order 2 is now gone)
+      limit(700, 4, Side::Buy, 98, 5),
+      execute(800, 4, 5),                 // a worse price: the aggressor went through our 99
+      limit(900, 5, Side::Buy, 97, 1)};
+  for (const bool model : {true, false}) {
+    Scripted s;
+    s.step = [](std::size_t i, const OrderBook&, replay::OrderGateway& gw) {
+      if (i == 1) gw.submit(Side::Buy, OrderType::Limit, 99, 5);
+    };
+    replay::TradingConfig cfg;
+    cfg.queue_fills = model;
+    const auto st = replay::replay_trading(ev, cfg, s);
+    const auto& m = st.strategy;
+    if (!model) {  // without the model nothing ever crosses the bid: no fills at all
+      CHECK(m.fills == 0 && m.position == 0 && m.queue_fills == 0);
+      continue;
+    }
+    CHECK(s.fills.size() == 2);
+    if (s.fills.size() != 2) continue;
+    CHECK(s.fills[0].qty == 3 && s.fills[0].price == 99 && s.fills[0].ts == 500 &&
+          !s.fills[0].aggressor && s.fills[0].remaining == 2);
+    CHECK(s.fills[1].qty == 2 && s.fills[1].price == 99 && s.fills[1].ts == 800 &&
+          s.fills[1].remaining == 0);
+    CHECK(m.queue_fills == 2 && m.queue_fill_qty == 5 && m.fills == 2 && m.position == 5);
+    CHECK(m.cash == -5 * 99);
+    // The feed book is still exact: every feed execution was applied in full.
+    CHECK(st.replay.reduce_misses == 0 && st.replay.final_orders == 3);  // 1, 3 (7 left), 5
+  }
+}
+
 TEST(feed_ids_in_strategy_range_are_skipped) {
   const std::vector<Event> ev{limit(100, replay::kStrategyIdBase + 5, Side::Buy, 90, 5),
                               limit(200, 1, Side::Sell, 110, 5)};

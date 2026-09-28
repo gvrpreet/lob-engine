@@ -117,6 +117,59 @@ TradingStats replay_trading(std::span<const Event> events, const TradingConfig& 
     if (is_strategy_id(t.taker)) record(t.taker, t, true);
     if (is_strategy_id(t.maker)) record(t.maker, t, false);
   };
+  // Queue-position model, for Execute events (ITCH E/C). The feed traded `event.qty` shares of
+  // feed order `event.id` against an aggressor it does not show. By price-time priority, that
+  // aggressor would first have reached every strategy order at a better price, and those at the
+  // same price queued ahead of the executed order. Those are filled (as makers, at their own
+  // price) up to the executed quantity. The feed order is still reduced as recorded, so the
+  // book stays exact: the strategy is assumed too small to change what the aggressor did.
+  const auto queue_fill = [&](const Event& event) {
+    if (!cfg.queue_fills || live.empty()) return;
+    lob::Side side;
+    lob::Price price;
+    lob::Qty resting;
+    if (!book.find_order(event.id, side, price, resting)) return;
+    struct Ahead {
+      lob::Price price;
+      std::uint64_t rank;  // time priority within a price
+      lob::OrderId id;
+      lob::Qty qty;
+    };
+    std::vector<Ahead> ahead;
+    const auto better = [side](lob::Price a, lob::Price b) {
+      return side == lob::Side::Buy ? a > b : a < b;
+    };
+    for (const auto& [id, order] : live) {  // strategy orders resting at a better price
+      if (order.side != side) continue;
+      lob::Side s;
+      lob::Price p;
+      lob::Qty q;
+      if (book.find_order(id, s, p, q) && better(p, price)) ahead.push_back({p, id, id, q});
+    }
+    std::uint64_t position = 0;  // strategy orders queued ahead at the executed order's price
+    book.for_each_order_at(side, price, [&](lob::OrderId id, lob::Qty q) {
+      if (id == event.id) return false;
+      if (is_strategy_id(id)) ahead.push_back({price, position, id, q});
+      ++position;
+      return true;
+    });
+    if (ahead.empty()) return;
+    std::sort(ahead.begin(), ahead.end(), [&](const Ahead& a, const Ahead& b) {
+      return a.price != b.price ? better(a.price, b.price) : a.rank < b.rank;
+    });
+    lob::Qty left = std::min(event.qty, resting);
+    for (const Ahead& a : ahead) {
+      if (left == 0) break;
+      const lob::Qty q = std::min(left, a.qty);
+      left -= q;
+      book.reduce(a.id, q);  // removes the order when q is all it had
+      ++m.queue_fills;
+      m.queue_fill_qty += q;
+      last_trade = a.price;
+      traded = true;
+      record(a.id, lob::Trade{0, a.id, a.price, q, event.ts}, false);
+    }
+  };
   const auto deliver = [&] {
     for (std::size_t i = 0; i < fills.size(); ++i) {  // on_fill may queue actions, not fills
       strategy.on_fill(fills[i], gw);
@@ -194,6 +247,9 @@ TradingStats replay_trading(std::span<const Event> events, const TradingConfig& 
           else if (r == lob::ModifyResult::Rejected) ++st.rejected;
           break;
         }
+        case EventType::Execute:
+          queue_fill(event);  // before the feed reduce: needs the executed order's queue place
+          [[fallthrough]];
         case EventType::Reduce:
           if (!book.reduce(event.id, event.qty)) ++st.reduce_misses;
           break;

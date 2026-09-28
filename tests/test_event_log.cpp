@@ -128,8 +128,34 @@ TEST(v1_log_rejects_v2_event_types) {
   std::remove(path.c_str());
 
   auto bad_v2 = file_bytes(kGoldenV2);
-  bad_v2[rec + offsetof(replay::Event, type)] = 4;
-  CHECK(rejected(bad_v2));
+  bad_v2[rec + offsetof(replay::Event, type)] = static_cast<char>(replay::EventType::Execute);
+  CHECK(rejected(bad_v2));  // Execute needs the v3 magic
+
+  auto v3 = bad_v2;
+  v3[7] = '3';
+  const std::string v3_path = temp_path("lob_v3_events.bin");
+  write_bytes(v3_path, v3);
+  std::vector<replay::Event> v3_events;
+  CHECK(replay::read_events(v3_path, v3_events) && v3_events.size() == 2000);
+  std::remove(v3_path.c_str());
+  v3[rec + offsetof(replay::Event, type)] = 5;
+  CHECK(rejected(v3));
+}
+
+TEST(writer_picks_the_lowest_version_that_fits) {
+  const std::string path = temp_path("lob_version_events.bin");
+  std::vector<replay::Event> ev(3);
+  for (auto [type, magic] : {std::pair{replay::EventType::Cancel, '1'},
+                             std::pair{replay::EventType::Reduce, '2'},
+                             std::pair{replay::EventType::Execute, '3'}}) {
+    ev[1].type = type;
+    CHECK(replay::write_events(path, ev));
+    const auto bytes = file_bytes(path);
+    CHECK(bytes.size() > 8 && bytes[7] == magic);
+    std::vector<replay::Event> back;
+    CHECK(replay::read_events(path, back) && back.size() == 3 && back[1].type == type);
+  }
+  std::remove(path.c_str());
 }
 
 TEST(read_events_rejects_malformed_logs) {

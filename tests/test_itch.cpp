@@ -126,9 +126,9 @@ TEST(itch_converts_one_symbol_with_exact_mapping) {
   CHECK(same(ev[0], EventType::New, 1000, 100, S::Buy, 1'000'000, 50));
   CHECK(same(ev[1], EventType::New, 1001, 200, S::Sell, 1'010'000, 30));
   CHECK(same(ev[2], EventType::New, 1002, 300, S::Buy, 1'000'000, 20));
-  CHECK(same(ev[3], EventType::Reduce, 1004, 100, S::Buy, 0, 10));
-  CHECK(same(ev[4], EventType::Reduce, 1005, 200, S::Buy, 0, 5));
-  CHECK(same(ev[5], EventType::Reduce, 1006, 300, S::Buy, 0, 20));
+  CHECK(same(ev[3], EventType::Execute, 1004, 100, S::Buy, 0, 10));  // E
+  CHECK(same(ev[4], EventType::Execute, 1005, 200, S::Buy, 0, 5));   // C
+  CHECK(same(ev[5], EventType::Reduce, 1006, 300, S::Buy, 0, 20));   // X
   CHECK(same(ev[6], EventType::Cancel, 1007, 100, S::Buy, 0, 0));
   CHECK(same(ev[7], EventType::New, 1007, 100, S::Buy, 1'000'000, 40));
   CHECK(same(ev[8], EventType::Modify, 1008, 100, S::Buy, 1'000'000, 60));

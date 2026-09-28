@@ -10,7 +10,8 @@
 namespace replay {
 
 // Event log file format (all integers little-endian; see docs/01-architecture.md):
-//   offset 0   8 bytes   magic "LOBEVT01" (v1: New/Cancel) or "LOBEVT02" (v2: adds Modify/Reduce)
+//   offset 0   8 bytes   magic "LOBEVT01" (v1: New/Cancel), "LOBEVT02" (v2: adds Modify/Reduce)
+//                        or "LOBEVT03" (v3: adds Execute)
 //   offset 8   u64       record count N
 //   offset 16  N × 32    raw Event records (layout in event.hpp), nothing after them
 // A valid file is exactly 16 + 32·N bytes, and every record has enum bytes in range for its
@@ -18,7 +19,8 @@ namespace replay {
 // the file is correctly aligned for Event.
 inline constexpr std::size_t kEventLogHeaderBytes = 16;
 
-// Writes v1 when every event is New/Cancel (so v1 logs stay byte-identical), v2 otherwise.
+// Writes the lowest version that holds every event (v1 for New/Cancel only, v2 up to
+// Modify/Reduce, v3 with Execute), so older logs stay byte-identical.
 bool write_events(const std::string& path, std::span<const Event> events);
 
 // Reads and validates a whole log. On failure returns false, leaves `out` empty, and (if given)
@@ -27,7 +29,7 @@ bool read_events(const std::string& path, std::vector<Event>& out, std::string* 
 
 // Index of the first record with an enum byte out of range for format `version` (1 or 2) or a
 // non-zero reserved byte; events.size() if all are valid.
-std::size_t first_invalid_event(std::span<const Event> events, unsigned version = 2) noexcept;
+std::size_t first_invalid_event(std::span<const Event> events, unsigned version = 3) noexcept;
 
 // Shared by both readers: checks the 16-byte header against the whole file's size and returns the
 // record count and format version. `header` must point at the file's first kEventLogHeaderBytes bytes.

@@ -1,6 +1,7 @@
 // usage: replay_cli <events.bin> [--read] [--latency] [--tsc] [--huge-pages] [--naive] [--no-strategy] [--order-size 48|64] [--hot-cold] [--tree] [--sorted]
 //        (the default book uses dense levels; --tree selects the std::map level store)
-//        replay_cli <events.bin> [--read] --strategy mm [--order-latency <ns>]   (trading replay, default book)
+//        replay_cli <events.bin> [--read] --strategy mm [--order-latency <ns>] [--no-queue-fills]
+//                                                                                (trading replay, default book)
 //        replay_cli <events.bin> --stream [--window <events>] [--no-strategy]    (bounded memory, default book)
 //        replay_cli <events.bin> [--read] --paced <speed> [--no-strategy]        (timestamp-paced, default book)
 #include <chrono>
@@ -23,7 +24,7 @@ int main(int argc, char** argv) {
   if (argc < 2) {
     std::fprintf(stderr,
                  "usage: %s <events.bin> [--read] [--latency] [--tsc] [--huge-pages] [--naive] [--no-strategy] [--order-size 48|64] [--hot-cold] [--tree] [--sorted]\n"
-                 "       %s <events.bin> [--read] --strategy mm [--order-latency <ns>]\n"
+                 "       %s <events.bin> [--read] --strategy mm [--order-latency <ns>] [--no-queue-fills]\n"
                  "       %s <events.bin> --stream [--window <events>] [--no-strategy]\n"
                  "       %s <events.bin> [--read] --paced <speed> [--no-strategy]\n",
            argv[0], argv[0], argv[0], argv[0]);
@@ -126,6 +127,10 @@ int main(int argc, char** argv) {
       trading.order_latency_ns = std::strtoull(argv[++i], nullptr, 10);
       latency_given = true;
     }
+    else if (std::strcmp(argv[i], "--no-queue-fills") == 0) {
+      trading.queue_fills = false;
+      latency_given = true;  // also a trading-replay-only option
+    }
     else if (std::strcmp(argv[i], "--latency") == 0) cfg.measure_latency = true;
     else if (std::strcmp(argv[i], "--tsc") == 0) cfg.latency_timer = replay::LatencyTimer::Tsc;
     else if (std::strcmp(argv[i], "--huge-pages") == 0) huge = true;
@@ -153,7 +158,7 @@ int main(int argc, char** argv) {
   const int variants =
       int{naive} + int{hot_cold} + int{order_size != 32} + int{tree} + int{sorted} + int{huge};
   if (latency_given && !market_maker) {
-    std::fprintf(stderr, "--order-latency needs --strategy mm\n");
+    std::fprintf(stderr, "--order-latency / --no-queue-fills need --strategy mm\n");
     return 2;
   }
   if (paced_speed > 0) {
@@ -205,8 +210,8 @@ int main(int argc, char** argv) {
     std::printf("amend misses  : modify %llu   reduce %llu\n", (unsigned long long)st.modify_misses,
                 (unsigned long long)st.reduce_misses);
     std::printf("throughput    : %.2f M events/s (%.3f s)\n", st.events_per_sec() / 1e6, st.seconds);
-    std::printf("strategy      : market maker, order latency %llu ns\n",
-                (unsigned long long)trading.order_latency_ns);
+    std::printf("strategy      : market maker, order latency %llu ns, queue-position fills %s\n",
+                (unsigned long long)trading.order_latency_ns, trading.queue_fills ? "on" : "off");
     std::printf("mm orders     : %llu submitted, %llu modifies, %llu cancels, %llu rejected, %llu misses, %llu in flight at end\n",
                 (unsigned long long)m.orders, (unsigned long long)m.modifies,
                 (unsigned long long)m.cancels, (unsigned long long)m.rejected,
@@ -214,6 +219,8 @@ int main(int argc, char** argv) {
     std::printf("mm fills      : %llu (%llu aggressive), %llu of %llu shares, fill rate %.4f\n",
                 (unsigned long long)m.fills, (unsigned long long)m.aggressive_fills,
                 (unsigned long long)m.filled_qty, (unsigned long long)m.submitted_qty, m.fill_rate());
+    std::printf("mm queue fills: %llu (%llu shares) from feed executions behind or below the quote\n",
+                (unsigned long long)m.queue_fills, (unsigned long long)m.queue_fill_qty);
     std::printf("mm position   : %lld   cash %lld ticks\n", (long long)m.position, (long long)m.cash);
     std::printf("mm pnl        : realised %.1f   marked %.1f (mark %.1f) ticks x shares\n",
                 m.realised_pnl, m.marked_pnl, m.mark_price);

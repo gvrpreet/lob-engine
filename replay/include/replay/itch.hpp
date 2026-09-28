@@ -7,7 +7,9 @@
 // Mapping (the book reconstruction is exact for displayed orders):
 //   R stock directory  -> learns the symbol's stock locate
 //   A / F add order     -> New limit; engine id = the order's ITCH reference number
-//   E / C executed      -> Reduce by the executed shares (the aggressor never appears as an Add)
+//   E / C executed      -> Execute of the executed shares (the aggressor never appears as an
+//                          Add; Execute acts as Reduce on the book, and drives queue-position
+//                          fills in the trading replay). Output is therefore a v3 log.
 //   X cancel            -> Reduce by the cancelled shares
 //   D delete            -> Cancel
 //   U replace           -> ITCH replace always loses priority. Emitted as Modify when the engine
